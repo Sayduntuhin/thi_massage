@@ -2,6 +2,7 @@ import 'package:animated_notch_bottom_bar/animated_notch_bottom_bar/animated_not
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:thi_massage/themes/colors.dart';
+import 'package:thi_massage/view/profile/pages/profile_page.dart';
 import 'home_content.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -18,10 +19,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _pages = [
     Center(child: Text("Wallet Screen", style: TextStyle(fontSize: 18.sp))),
     Center(child: Text("Chat Screen", style: TextStyle(fontSize: 18.sp))),
-    const HomeContent(), // Home Page
+    HomeContent(), // Home Page
     Center(child: Text("Bookings Screen", style: TextStyle(fontSize: 18.sp))),
-    Center(child: Text("Profile Screen", style: TextStyle(fontSize: 18.sp))),
-  ];
+    ProfilePage()
+   ];
 
   @override
   void initState() {
@@ -42,14 +43,16 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _pages[_selectedIndex],
 
       bottomNavigationBar: SizedBox(
-        width: 1.sw, // Full width using ScreenUtil
+        width: 2.sw, // Full width using ScreenUtil
         child: AnimatedNotchBottomBar(
+          showTopRadius: true,
+          showBottomRadius: true,
           bottomBarWidth: 1.sw, // Ensure the bar fits full screen width
           notchColor: const Color(0xFFB28D28),
           notchBottomBarController: _controller,
           color: buttonNavigationBar,
           showLabel: true,
-          kBottomRadius: 0, // Adjusted to fit bottom properly
+          kBottomRadius: 30.r, // Adjusted to fit bottom properly
           kIconSize: 22.w,
           bottomBarItems: [
             _buildNavItem("assets/images/wallet.png", "Wallet", 0),

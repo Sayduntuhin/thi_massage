@@ -66,8 +66,7 @@ class LoginPage extends StatelessWidget {
                 text: "Login",
                 isPrimary: true,
                 onPressed: () {
-
-                  Get.offNamed('/homePage');
+                  Get.offAllNamed('/homePage');
                 },
               ),
               SizedBox(height: 20.h),

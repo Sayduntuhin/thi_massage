@@ -19,6 +19,7 @@ class ThaiMassageApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'Thai Massage',
           theme: ThemeData(
+            fontFamily: "Urbanist",
             scaffoldBackgroundColor: Colors.white,
             primaryColor: const Color(0xFFAD7E23),
             colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFAD7E23)),
