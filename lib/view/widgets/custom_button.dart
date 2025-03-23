@@ -8,6 +8,7 @@ class ThaiMassageButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool isPrimary;
   final double? width;
+  final double fontsize;
   final double height;
   final double borderRadius;
   final Color? backgroundColor;
@@ -21,6 +22,7 @@ class ThaiMassageButton extends StatelessWidget {
     this.isPrimary = true,
     this.width,
     this.height = 55,
+    this.fontsize = 16,
     this.borderRadius = 25,
     this.backgroundColor,
     this.textColor,
@@ -42,21 +44,23 @@ class ThaiMassageButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor ?? defaultPrimaryColor,
           foregroundColor: textColor ?? defaultTextColor,
-          padding: EdgeInsets.symmetric(vertical: 12.h),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius.r),
           ),
           elevation: 0,
+          minimumSize: Size(width ?? double.infinity, height.h),
+          alignment: Alignment.center, // Ensures text stays centered
         ),
         child: Text(
           text,
           style: TextStyle(
-            fontSize: 16.sp,
+            fontSize: fontsize.sp,
             fontWeight: FontWeight.w500,
-            fontFamily: "Urbanist"
+            fontFamily: "Urbanist",
           ),
         ),
       )
+
           : OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
@@ -64,22 +68,23 @@ class ThaiMassageButton extends StatelessWidget {
             color: borderColor ?? defaultBorderColor,
             width: 1.w,
           ),
-          foregroundColor: textColor ?? defaultTextColor,
           backgroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(vertical: 12.h),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius.r),
           ),
+          minimumSize: Size(width ?? double.infinity, height.h),
+          alignment: Alignment.center,
         ),
         child: Text(
           text,
           style: TextStyle(
-            fontSize: 16.sp,
+            fontSize: fontsize.sp,
             fontWeight: FontWeight.w400,
             color: buttonTextColor,
           ),
         ),
-      ),
+      )
+
     );
   }
 }

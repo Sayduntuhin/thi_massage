@@ -2,6 +2,8 @@ import 'package:animated_notch_bottom_bar/animated_notch_bottom_bar/animated_not
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:thi_massage/themes/colors.dart';
+import 'package:thi_massage/view/booking/pages/booking_page.dart';
+import 'package:thi_massage/view/chat/pages/chat_list_page.dart';
 import 'package:thi_massage/view/profile/pages/profile_page.dart';
 import 'home_content.dart';
 
@@ -18,9 +20,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _pages = [
     Center(child: Text("Wallet Screen", style: TextStyle(fontSize: 18.sp))),
-    Center(child: Text("Chat Screen", style: TextStyle(fontSize: 18.sp))),
-    HomeContent(), // Home Page
-    Center(child: Text("Bookings Screen", style: TextStyle(fontSize: 18.sp))),
+    ChatListScreen(),
+    HomeContent(),
+    BookingsPage(),
     ProfilePage()
    ];
 

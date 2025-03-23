@@ -121,7 +121,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
                 ),
               ),
             ),
-            SizedBox(height: 0.135.sh),
+            SizedBox(height: 0.06.sh),
 
             // Confirm Button - Visible only when 4 digits are entered
             if (currentOtp.length == 4)

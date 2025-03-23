@@ -9,6 +9,7 @@ import '../../auth/widgets/customTextField.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_gradientButton.dart';
+import '../../widgets/payment_options_sheet.dart';
 
 
 class ProfileSetupPage extends StatefulWidget {
@@ -35,87 +36,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     }
   }
 
-  // Function to show the payment options bottom sheet
-  void _showPaymentBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _buildPaymentOptions(),
-    );
-  }
 
-  Widget _buildPaymentOptions() {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.4,
-      minChildSize: 0.3,
-      maxChildSize: 0.6,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20.r),
-              topRight: Radius.circular(20.r),
-            ),
-          ),
-          child: Column(
-            children: [
-              SizedBox(height: 10.h),
-              Container(
-                width: 50.w,
-                height: 5.h,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-              ),
-              SizedBox(height: 10.h),
-
-              // Title
-              Text(
-                "Add Payment Method",
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  color: Color(0xff333333),
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Urbanist'
-                ),
-              ),
-              SizedBox(height: 10.h),
-
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    _buildPaymentOption("Credit/Debit Card", "assets/images/credit.png",'/addCard'),
-                    _buildPaymentOption("PayPal", "assets/images/paypal.png",''),
-                    _buildPaymentOption("Google Pay", "assets/images/googlepay.png",''),
-                    _buildPaymentOption("Apple Pay", "assets/images/applepay.png",''),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-  Widget _buildPaymentOption(String title, String iconPath, String routeName) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: ListTile(
-        leading: Image.asset(iconPath, width: 40.w),
-        title: Text(title, style: TextStyle(fontSize: 16.sp, color: Color(0xff666561))),
-        trailing: Icon(Icons.arrow_forward_ios, size: 16.sp),
-        onTap: () {
-          debugPrint("$title Selected");
-          Navigator.pop(context); // Close bottom sheet before navigation
-          Get.toNamed(routeName); // Navigate to the corresponding route
-        },
-      ),
-    );
-  }
 
 
   @override
@@ -183,7 +104,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               CustomGradientButton(
                 text: "Add Payment Method",
                 showIcon: true,
-                onPressed: _showPaymentBottomSheet,
+                onPressed: (){PaymentOptionsSheet.show(context);},
+
               ),
               SizedBox(height: 20.h),
 

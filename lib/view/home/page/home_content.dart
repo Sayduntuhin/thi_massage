@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import '../../../themes/colors.dart';
 import '../widgets/category_item.dart';
@@ -69,26 +71,34 @@ class HomeContent extends StatelessWidget {
             SizedBox(height: 20.h),
 
             // Search Bar
-            TextField(
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.search, color: Color(0xff606060)),
-              hintText: "Search",
-              hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
-              filled: true,
-              fillColor: textFieldColor, // Background color
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20.r),
-                borderSide: BorderSide(color:borderColor.withAlpha(40), width: 1.5.w),
+          GestureDetector(
+            onTap: () {
+              Get.toNamed("/searchPage");
+            },
+            child: AbsorbPointer( // Prevents user input in TextField
+              child: TextField(
+                readOnly: true, // Ensure it's read-only
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Icons.search, color: const Color(0xff606060)),
+                  hintText: "Search",
+                  hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
+                  filled: true,
+                  fillColor: textFieldColor, // Background color
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20.r),
+                    borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20.r),
+                    borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20.r),
+                    borderSide: BorderSide(color: borderColor.withAlpha(40), width: 2.w),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(vertical: 16.h),
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20.r),
-                borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20.r),
-                borderSide: BorderSide(color: borderColor.withAlpha(40), width: 2.w),
-              ),
-              contentPadding: EdgeInsets.symmetric(vertical: 16.h),
             ),
           ),
             SizedBox(height: 20.h),

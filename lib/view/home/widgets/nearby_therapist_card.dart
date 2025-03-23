@@ -79,10 +79,10 @@ class TherapistCard extends StatelessWidget {
 
                 // Therapist or Bookings
                 Container(
-                  height: 0.06.sh,
+                  height: 0.065.sh,
                   width: 0.3.sw,
                   margin: EdgeInsets.only(top: 6.h),
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                  padding: EdgeInsets.symmetric(horizontal: 8.w,),
                   decoration: BoxDecoration(
                     color: primaryButtonColor,
                     borderRadius: BorderRadius.only(

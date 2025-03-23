@@ -26,8 +26,7 @@ class PromotionCard extends StatelessWidget {
             child: Padding(
               padding:  EdgeInsets.only(top: 10.h),
               child: Container(
-                height: 0.2.sh, // ✅ Left container height is shorter
-                padding: EdgeInsets.all(15.w),
+                padding: EdgeInsets.only(left: 15.w, right: 15.w),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   boxShadow: [
@@ -70,7 +69,6 @@ class PromotionCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    SizedBox(height: 6.h),
                     // Description text
                     Text(
                       description,
@@ -80,29 +78,31 @@ class PromotionCard extends StatelessWidget {
                         height: 1.2,
                       ),
                     ),
-                    SizedBox(height: 6.h),
 
                     // Invite button
-                    SizedBox(
-                      width: 0.3.sw,
-                      height: 0.025.sh,
-                      child: ElevatedButton(
-                        onPressed: onTap,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8F5E0A),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15.r),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10.0, bottom: 10.0),
+                      child: SizedBox(
+                        width: 0.3.sw,
+                        height: 0.03.sh,
+                        child: ElevatedButton(
+                          onPressed: onTap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF8F5E0A),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(horizontal: 20.w),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15.r),
+                            ),
+                            elevation: 0,
                           ),
-                          elevation: 0,
-                        ),
-                        child: Text(
-                          "Invite Now",
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: "Urbanist",
+                          child: Text(
+                            "Invite Now",
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: "Urbanist",
+                            ),
                           ),
                         ),
                       ),
