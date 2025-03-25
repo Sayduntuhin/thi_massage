@@ -4,11 +4,15 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/booking/pages/booking_page.dart';
 import 'package:thi_massage/view/chat/pages/chat_list_page.dart';
+import 'package:thi_massage/view/home/page/therapist_home_page.dart';
 import 'package:thi_massage/view/profile/pages/profile_page.dart';
+import '../../wallet/pages/wallet_page.dart';
 import 'home_content.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool isTherapist;
+
+  const HomeScreen({super.key,required this.isTherapist});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,13 +22,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 2; // Start with Home selected
   late final NotchBottomBarController _controller;
 
-  final List<Widget> _pages = [
-    Center(child: Text("Wallet Screen", style: TextStyle(fontSize: 18.sp))),
-    ChatListScreen(),
-    HomeContent(),
-    BookingsPage(),
-    ProfilePage()
-   ];
 
   @override
   void initState() {
@@ -41,6 +38,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> _pages = [
+      WalletScreen(),
+      ChatListScreen(),
+      widget.isTherapist ? const TherapistHomePage() : HomeContent(),
+      BookingsPage(),
+      ProfilePage()
+    ];
     return Scaffold(
       body: _pages[_selectedIndex],
 

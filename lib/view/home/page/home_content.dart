@@ -71,7 +71,7 @@ class HomeContent extends StatelessWidget {
             SizedBox(height: 20.h),
 
             // Search Bar
-          GestureDetector(
+            GestureDetector(
             onTap: () {
               Get.toNamed("/searchPage");
             },

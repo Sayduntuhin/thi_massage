@@ -79,8 +79,14 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return SizedBox(
+        return Container(
           height: 400.h,
+         decoration: BoxDecoration(
+           color: Colors.white,
+           borderRadius: BorderRadius.only(
+             topLeft: Radius.circular(20.r),
+             topRight: Radius.circular(20.r),
+           ),),
           child: Column(
             children: [
               Padding(

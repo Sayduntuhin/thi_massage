@@ -10,10 +10,13 @@ import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_gradientButton.dart';
 import '../../widgets/payment_options_sheet.dart';
+import '../widgets/step_progress_indicator.dart';
 
 
 class ProfileSetupPage extends StatefulWidget {
-  const ProfileSetupPage({super.key});
+  final bool isTherapist; // Pass this from previous screen or controller
+
+  const ProfileSetupPage({super.key, this.isTherapist = true}); // default: therapist
 
   @override
   State<ProfileSetupPage> createState() => _ProfileSetupPageState();
@@ -22,7 +25,6 @@ class ProfileSetupPage extends StatefulWidget {
 class _ProfileSetupPageState extends State<ProfileSetupPage> {
   File? _image;
 
-  // Function to pick an image
   Future<void> _pickImage() async {
     try {
       final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -35,9 +37,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       debugPrint("Error picking image: $e");
     }
   }
-
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -82,48 +81,55 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   ),
                 ],
               ),
+
+              SizedBox(height: 12.h),
+
+              /// 🔁 Progress bar (Only for therapist)
+              if (widget.isTherapist) ...[
+                SizedBox(height: 20.h),
+                const StepProgressIndicator(currentStep: 1),
+                SizedBox(height: 20.h),
+              ],
+
               SizedBox(height: 20.h),
 
-              // Name Field
               CustomTextField(hintText: "Enter your name", icon: Icons.person_outline),
               SizedBox(height: 15.h),
 
-              // Email Field
               CustomTextField(hintText: "Enter your email", icon: Icons.email_outlined),
               SizedBox(height: 15.h),
 
-              // Phone Number Field
               PhoneNumberField(),
               SizedBox(height: 15.h),
 
-              // Date of Birth Field
               CustomTextField(hintText: "Date of Birth", icon: Icons.calendar_today_outlined),
               SizedBox(height: 20.h),
 
-              // Add Payment Method Button (Opens Bottom Sheet)
               CustomGradientButton(
                 text: "Add Payment Method",
                 showIcon: true,
-                onPressed: (){PaymentOptionsSheet.show(context);},
-
+                onPressed: () => PaymentOptionsSheet.show(context),
               ),
-              SizedBox(height: 20.h),
 
-              // Payment Method Info
+              SizedBox(height: 20.h),
               Text(
                 "Adding Payment Method is Optional at this stage",
                 style: TextStyle(fontSize: 14.sp, color: Colors.black54),
               ),
-              SizedBox(height: 0.07.sh),
 
-              // Save & Continue Button
+              SizedBox(height: 0.07.sh),
               ThaiMassageButton(
                 text: "Save & continue",
                 isPrimary: true,
                 onPressed: () {
-                  Get.toNamed("/logIn"); // Navigate to next step
+                  if (widget.isTherapist) {
+                    Get.toNamed("/verifyDocumentsPage");
+                  } else {
+                    Get.toNamed("/logIn");
+                  }
                 },
               ),
+
               SizedBox(height: 30.h),
             ],
           ),
@@ -132,3 +138,4 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     );
   }
 }
+

@@ -4,7 +4,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 
 import '../../../themes/colors.dart';
-import '../widgets/carve_shap_painter.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -16,7 +15,7 @@ class ProfilePage extends StatelessWidget {
         children: [
           // Top profile header with curved bottom
           Container(
-            height: 0.3.sh,
+            height: 0.35.sh,
             width: double.infinity,
             decoration: BoxDecoration(
               color: const Color(0xFFB28D28),
@@ -37,6 +36,9 @@ class ProfilePage extends StatelessWidget {
                     painter: CurveShapePainter(),
                   ),
                 ),
+
+
+
                 // Profile content - centered
                 Center(
                   child: Column(
@@ -242,4 +244,31 @@ class ProfilePage extends StatelessWidget {
       ),
     );
   }
+}
+
+// Custom painter for the curved decoration at the top
+class CurveShapePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withAlpha(20)
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    path.moveTo(0, 0);
+    path.lineTo(0, size.height * 0.7);
+    path.quadraticBezierTo(
+        size.width * 0.5,
+        size.height * 1.2,
+        size.width,
+        size.height * 0.6
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

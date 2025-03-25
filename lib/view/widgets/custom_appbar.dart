@@ -75,13 +75,12 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       centerTitle: true, // ✅ Keeps title centered
-      leadingWidth: 0.18.sw,
+      leadingWidth: 0.16.sw,
       leading: showBackButton
           ?  Padding(
-            padding: const EdgeInsets.only(left: 20),
+            padding: const EdgeInsets.only(left: 20,top: 10),
             child: Container(
-                    width: 50.w,
-                    height: 50.h,
+
                     decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.all(Radius.circular(15.0)),

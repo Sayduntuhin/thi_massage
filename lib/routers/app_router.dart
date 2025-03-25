@@ -6,16 +6,21 @@ import 'package:thi_massage/view/auth/signup/page/sign_up.dart';
 import 'package:thi_massage/view/booking/pages/appoinment_details_page.dart';
 import 'package:thi_massage/view/booking/pages/appointment_payment_page.dart';
 import 'package:thi_massage/view/booking/pages/appointment_page.dart';
+import 'package:thi_massage/view/chat/pages/chat_details_page.dart';
 import 'package:thi_massage/view/home/page/home_page.dart';
 import 'package:thi_massage/view/home/page/notification_page.dart';
 import 'package:thi_massage/view/profile/pages/change_password_page.dart';
 import 'package:thi_massage/view/profile/pages/invite_friend_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/add_card_page.dart';
+import 'package:thi_massage/view/profileSetup/pages/review_submitted_page.dart';
+import 'package:thi_massage/view/profileSetup/pages/verify_documents_page.dart';
 import 'package:thi_massage/view/welcome/pages/welcome_page.dart';
 import '../view/auth/forgetPassword/forget_password.dart';
 import '../view/auth/login/login_page.dart';
+import '../view/booking/pages/cutomer_preferences_page.dart';
 import '../view/booking/pages/live_treaking_page.dart';
 import '../view/booking/pages/terms_and_conditions.dart';
+import '../view/home/page/therapist_page.dart';
 import '../view/home/widgets/search_page.dart';
 import '../view/profile/pages/edite_profile_page.dart';
 import '../view/profile/pages/favorite_therapist.dart';
@@ -44,13 +49,21 @@ class Routes {
   static const String termsAndConditions = "/termsAndConditions";
   static const String appointmentDetailsPage = "/appointmentDetailsPage";
   static const String liveTrackingPage = "/liveTrackingPage";
+  static const String chatDetailsPage = "/chatDetailsPage";
+  static const String therapistPage = "/therapistPage";
+  static const String customerPreferencesPage = "/customerPreferencesPage";
+  static const String verifyDocumentsPage = "/verifyDocumentsPage";
+  static const String  reviewSubmitPage= "/reviewSubmitPage";
 
 
 
 }
 
 class AppPages {
+  static const bool isTherapist = true;
+
   static final routes = [
+
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Welcome<<<<<<<<<<<<<<<<<<<
     GetPage(name: Routes.initial, page: () => WelcomePage(), transition: Transition.zoom),
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Auth   <<<<<<<<<<<<<<<<<<<
@@ -60,14 +73,23 @@ class AppPages {
     GetPage(name: Routes.otpVerification, page: () => OTPVerificationPage(), transition: Transition.rightToLeft),
     GetPage(name: Routes.resetPassword, page: () => ResetPasswordPage(), transition: Transition.rightToLeft),
    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ProfileSetup<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.profileSetup, page: () => ProfileSetupPage(), transition: Transition.size),
+    GetPage(name: Routes.profileSetup, page: () => ProfileSetupPage(isTherapist: isTherapist,), transition: Transition.size),
+    GetPage(name: Routes.verifyDocumentsPage, page: () => VerifyDocumentsPage(), transition: Transition.size),
+    GetPage(name: Routes.reviewSubmitPage, page: () => ReviewSubmittedPage(), transition: Transition.size),
     GetPage(name: Routes.addCard, page: () => AddCardPage(), transition: Transition.size),
+
+    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ChatPage<<<<<<<<<<<<<<<<<<<
+    GetPage(name: Routes.chatDetailsPage, page: () => ChatDetailScreen(), transition: Transition.fadeIn),
+
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>HomePage<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.homePage, page: () => HomeScreen(), transition: Transition.fadeIn),
+    GetPage(name: Routes.homePage, page: () => HomeScreen(isTherapist: isTherapist,), transition: Transition.fadeIn),
     GetPage(name: Routes.notificationsPage, page: () => NotificationsPage(), transition: Transition.fadeIn),
     GetPage(name: Routes.searchPage, page: () => SearchPage(), transition: Transition.fadeIn),
+    GetPage(name: Routes.therapistPage, page: () => TherapistProfileScreen(), transition: Transition.fadeIn),
+
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>BookingPage<<<<<<<<<<<<<<<<<<<
     GetPage(name: Routes.appointmentPage, page: () => AppointmentScreen(), transition: Transition.fadeIn),
+    GetPage(name: Routes.customerPreferencesPage, page: () => CustomerPreferencesScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.appointmentPaymentPage, page: () => AppointmentPaymentScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.termsAndConditions, page: () => TermsAndConditionsScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.appointmentDetailsPage, page: () => AppointmentDetailScreen(), transition: Transition.fadeIn),

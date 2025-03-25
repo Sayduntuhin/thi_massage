@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
+import '../../../models/therapist_model.dart';
 import '../../../routers/app_router.dart';
 import '../../home/widgets/category_item.dart';
 import '../../widgets/custom_button.dart';
@@ -853,23 +855,28 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          color: secounderyBorderColor.withAlpha(40),
-          height: 55.h,
-          child: Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: Row(
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w600,
+        GestureDetector(
+          onTap: (){
+            Get.toNamed('/customerPreferencesPage');
+          },
+          child: Container(
+            color: secounderyBorderColor.withAlpha(40),
+            height: 55.h,
+            child: Padding(
+              padding: const EdgeInsets.all(15.0),
+              child: Row(
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const Spacer(),
-                Icon(Icons.arrow_forward_ios_sharp, size: 20.sp),
-              ],
+                  const Spacer(),
+                  Icon(Icons.arrow_forward_ios_sharp, size: 20.sp),
+                ],
+              ),
             ),
           ),
         ),
@@ -986,20 +993,4 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       ),
     );
   }
-}
-
-class Therapist {
-  final int id;
-  final String name;
-  final String image;
-  final double rating;
-  final int reviewCount;
-
-  Therapist({
-    required this.id,
-    required this.name,
-    required this.image,
-    required this.rating,
-    required this.reviewCount,
-  });
 }
