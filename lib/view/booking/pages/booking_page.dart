@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
+
+import '../../../controller/user_controller.dart';
 
 class BookingsPage extends StatefulWidget {
   const BookingsPage({super.key});
@@ -24,6 +25,8 @@ class _BookingsPageState extends State<BookingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final UserTypeController userTypeController = Get.find<UserTypeController>();
+
     // Filter bookings based on _selectedTab
     List<Map<String, String>> filteredBookings;
     if (_selectedTab == "All") {

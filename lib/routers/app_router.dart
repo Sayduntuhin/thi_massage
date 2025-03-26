@@ -73,7 +73,7 @@ class AppPages {
     GetPage(name: Routes.otpVerification, page: () => OTPVerificationPage(), transition: Transition.rightToLeft),
     GetPage(name: Routes.resetPassword, page: () => ResetPasswordPage(), transition: Transition.rightToLeft),
    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ProfileSetup<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.profileSetup, page: () => ProfileSetupPage(isTherapist: isTherapist,), transition: Transition.size),
+    GetPage(name: Routes.profileSetup, page: () => ProfileSetupPage(), transition: Transition.size),
     GetPage(name: Routes.verifyDocumentsPage, page: () => VerifyDocumentsPage(), transition: Transition.size),
     GetPage(name: Routes.reviewSubmitPage, page: () => ReviewSubmittedPage(), transition: Transition.size),
     GetPage(name: Routes.addCard, page: () => AddCardPage(), transition: Transition.size),
@@ -82,7 +82,7 @@ class AppPages {
     GetPage(name: Routes.chatDetailsPage, page: () => ChatDetailScreen(), transition: Transition.fadeIn),
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>HomePage<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.homePage, page: () => HomeScreen(isTherapist: isTherapist,), transition: Transition.fadeIn),
+    GetPage(name: Routes.homePage, page: () => HomeScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.notificationsPage, page: () => NotificationsPage(), transition: Transition.fadeIn),
     GetPage(name: Routes.searchPage, page: () => SearchPage(), transition: Transition.fadeIn),
     GetPage(name: Routes.therapistPage, page: () => TherapistProfileScreen(), transition: Transition.fadeIn),

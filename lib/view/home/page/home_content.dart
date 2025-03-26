@@ -21,6 +21,7 @@ class HomeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: BouncingScrollPhysics(),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.w),
         child: Column(

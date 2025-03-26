@@ -45,6 +45,7 @@ dependencies:
   carousel_slider: ^5.0.0
   table_calendar: ^3.2.0
   chatview: ^2.4.0
+  get_storage:
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 
+import '../../../controller/user_controller.dart';
 import '../../../themes/colors.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -10,6 +11,8 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final UserTypeController userTypeController = Get.find<UserTypeController>();
+
     return Scaffold(
       body: Column(
         children: [

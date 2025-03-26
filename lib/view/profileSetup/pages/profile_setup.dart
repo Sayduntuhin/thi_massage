@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../controller/user_controller.dart';
 import '../../../themes/colors.dart';
 import '../../auth/signup/widgets/phone_code_picker.dart';
 import '../../auth/widgets/customTextField.dart';
@@ -12,11 +13,8 @@ import '../../widgets/custom_gradientButton.dart';
 import '../../widgets/payment_options_sheet.dart';
 import '../widgets/step_progress_indicator.dart';
 
-
 class ProfileSetupPage extends StatefulWidget {
-  final bool isTherapist; // Pass this from previous screen or controller
-
-  const ProfileSetupPage({super.key, this.isTherapist = true}); // default: therapist
+  const ProfileSetupPage({super.key});
 
   @override
   State<ProfileSetupPage> createState() => _ProfileSetupPageState();
@@ -40,6 +38,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Access the UserTypeController
+    final UserTypeController userTypeController = Get.find<UserTypeController>();
+
     return Scaffold(
       body: SingleChildScrollView(
         child: Padding(
@@ -55,15 +56,16 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    "Profile \nsetup",
+                  // Use Obx to make the title reactive to user type changes
+                  Obx(() => Text(
+                    "${userTypeController.isTherapist.value ? 'Therapist' : 'Client'} \nProfile Setup",
                     style: TextStyle(
-                      fontSize: 38.sp,
+                      fontSize: 35.sp,
                       fontWeight: FontWeight.bold,
                       color: primaryTextColor,
                       fontFamily: "PlayfairDisplay",
                     ),
-                  ),
+                  )),
                   GestureDetector(
                     onTap: _pickImage,
                     child: CircleAvatar(
@@ -74,7 +76,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           ? Text(
                         "Upload profile picture",
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14.sp, color: Colors.white, fontFamily: 'Urbanist'),
+                        style: TextStyle(
+                            fontSize: 14.sp, color: Colors.white, fontFamily: 'Urbanist'),
                       )
                           : null,
                     ),
@@ -84,12 +87,19 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
               SizedBox(height: 12.h),
 
-              /// 🔁 Progress bar (Only for therapist)
-              if (widget.isTherapist) ...[
-                SizedBox(height: 20.h),
-                const StepProgressIndicator(currentStep: 1),
-                SizedBox(height: 20.h),
-              ],
+              /// Progress bar (Only for therapist)
+              Obx(() {
+                if (userTypeController.isTherapist.value) {
+                  return Column(
+                    children: [
+                      SizedBox(height: 20.h),
+                      const StepProgressIndicator(currentStep: 1),
+                      SizedBox(height: 20.h),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink(); // Return empty widget if not a therapist
+              }),
 
               SizedBox(height: 20.h),
 
@@ -105,24 +115,34 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               CustomTextField(hintText: "Date of Birth", icon: Icons.calendar_today_outlined),
               SizedBox(height: 20.h),
 
-              CustomGradientButton(
-                text: "Add Payment Method",
-                showIcon: true,
-                onPressed: () => PaymentOptionsSheet.show(context),
-              ),
-
-              SizedBox(height: 20.h),
-              Text(
-                "Adding Payment Method is Optional at this stage",
-                style: TextStyle(fontSize: 14.sp, color: Colors.black54),
-              ),
+              // Show "Add Payment Method" only for clients (not therapists)
+              Obx(() {
+                if (!userTypeController.isTherapist.value) {
+                  return Column(
+                    children: [
+                      CustomGradientButton(
+                        text: "Add Payment Method",
+                        showIcon: true,
+                        onPressed: () => PaymentOptionsSheet.show(context),
+                      ),
+                      SizedBox(height: 20.h),
+                      Text(
+                        "Adding Payment Method is Optional at this stage",
+                        style: TextStyle(fontSize: 14.sp, color: Colors.black54),
+                      ),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink(); // Return empty widget if therapist
+              }),
 
               SizedBox(height: 0.07.sh),
               ThaiMassageButton(
                 text: "Save & continue",
                 isPrimary: true,
                 onPressed: () {
-                  if (widget.isTherapist) {
+                  // Use the controller's isTherapist value to determine navigation
+                  if (userTypeController.isTherapist.value) {
                     Get.toNamed("/verifyDocumentsPage");
                   } else {
                     Get.toNamed("/logIn");
@@ -138,4 +158,3 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     );
   }
 }
-

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 
+import '../../../controller/user_controller.dart';
 import '../../../themes/colors.dart';
 import '../../../routers/app_router.dart'; // Import your app router for route names
 
@@ -14,6 +15,7 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProviderStateMixin {
+  final UserTypeController userTypeController = Get.find<UserTypeController>();
   late TabController _tabController;
 
   final List<Map<String, dynamic>> _chatList = [
