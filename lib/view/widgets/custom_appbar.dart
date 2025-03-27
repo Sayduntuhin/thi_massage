@@ -75,28 +75,27 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       centerTitle: true, // ✅ Keeps title centered
-      leadingWidth: 0.16.sw,
+      leadingWidth: 0.14.sw,
       leading: showBackButton
           ?  Padding(
-            padding: const EdgeInsets.only(left: 20,top: 10),
-            child: Container(
-
-                    decoration: BoxDecoration(
+        padding: const EdgeInsets.only(left: 10,top: 5,bottom: 5),
+        child: Container(
+          decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.all(Radius.circular(15.0)),
             border: Border.all(color: buttonBorderColor.withAlpha(60), width: 1.0),
-                    ),
-                    child: IconButton(
+          ),
+          child: IconButton(
             icon: Padding(
-              padding: EdgeInsets.only(left: 8.w),
-              child: Icon(Icons.arrow_back_ios, size: 24.sp, color: primaryButtonColor),
+              padding: EdgeInsets.only(left: 5.w),
+              child: Icon(Icons.arrow_back_ios, size: 20.sp, color: primaryButtonColor),
             ),
             onPressed: () {
               Navigator.of(context).pop();
             },
-                    ),
-                  ),
-          )
+          ),
+        ),
+      )
           : null, // ✅ Hide back button when false
     );
   }
