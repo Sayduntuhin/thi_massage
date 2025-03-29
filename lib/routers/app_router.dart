@@ -1,10 +1,8 @@
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
-import 'package:get/get_navigation/src/routes/get_route.dart';
-import 'package:get/get_navigation/src/routes/transitions_type.dart';
 import 'package:thi_massage/view/auth/forgetPassword/otp_verification_page.dart';
 import 'package:thi_massage/view/auth/forgetPassword/reset_password.dart';
 import 'package:thi_massage/view/auth/signup/page/sign_up.dart';
+import 'package:thi_massage/view/booking/pages/appinment_request_page.dart';
 import 'package:thi_massage/view/booking/pages/appoinment_details_page.dart';
 import 'package:thi_massage/view/booking/pages/appointment_payment_page.dart';
 import 'package:thi_massage/view/booking/pages/appointment_page.dart';
@@ -17,6 +15,7 @@ import 'package:thi_massage/view/profileSetup/pages/add_card_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/review_submitted_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/verify_documents_page.dart';
 import 'package:thi_massage/view/wallet/pages/new_payout_page.dart';
+import 'package:thi_massage/view/wallet/pages/payment_history_page.dart';
 import 'package:thi_massage/view/welcome/pages/welcome_page.dart';
 import '../view/auth/forgetPassword/forget_password.dart';
 import '../view/auth/login/login_page.dart';
@@ -60,9 +59,8 @@ class Routes {
   static const String  reviewSubmitPage= "/reviewSubmitPage";
   static const String  newPayoutPage = "/newPayoutPage";
   static const String  fundsWithdrawPage = "/fundsWithdrawPage";
-
-
-
+  static const String  paymentHistoryPage = "/paymentHistoryPage";
+  static const String  appointmentRequestPage = "/appointmentRequestPage";
 }
 
 class AppPages {
@@ -85,7 +83,7 @@ class AppPages {
     GetPage(name: Routes.addCard, page: () => AddCardPage(), transition: Transition.size),
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ChatPage<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.newPayoutPage, page: () => NewPayoutPage(), transition: Transition.fadeIn),
+    GetPage(name: Routes.chatDetailsPage, page: () => ChatDetailScreen(), transition: Transition.fadeIn),
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>HomePage<<<<<<<<<<<<<<<<<<<
     GetPage(name: Routes.homePage, page: () => HomeScreen(), transition: Transition.fadeIn),
@@ -100,10 +98,14 @@ class AppPages {
     GetPage(name: Routes.termsAndConditions, page: () => TermsAndConditionsScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.appointmentDetailsPage, page: () => AppointmentDetailScreen(), transition: Transition.fadeIn),
     GetPage(name: Routes.liveTrackingPage, page: () => LiveTrackingScreen (), transition: Transition.fadeIn),
+    GetPage(name: Routes.appointmentRequestPage, page: () => AppointmentRequestPage (), transition: Transition.fadeIn),
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Wallet<<<<<<<<<<<<<<<<<<<
     GetPage(name: Routes.editProfile, page: () => EditProfilePage(), transition: Transition.fadeIn),
     GetPage(name: Routes.fundsWithdrawPage, page: () => FundsWithdrawPage(selectedBank: Get.arguments['selectedBank'],), transition: Transition.fadeIn),
+    GetPage(name: Routes.paymentHistoryPage, page: () => PayoutHistoryPage(), transition: Transition.fadeIn),
+    GetPage(name: Routes.newPayoutPage, page: () => NewPayoutPage(), transition: Transition.fadeIn),
+
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ProfilePage<<<<<<<<<<<<<<<<<<<
     GetPage(name: Routes.editProfile, page: () => EditProfilePage(), transition: Transition.fadeIn),

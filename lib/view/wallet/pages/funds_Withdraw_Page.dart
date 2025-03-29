@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_gradientButton.dart';
 
@@ -14,29 +15,15 @@ class FundsWithdrawPage extends StatefulWidget {
 }
 
 class _FundsWithdrawPageState extends State<FundsWithdrawPage> {
-  final double availableAmount = 133.5;
   final TextEditingController _amountController = TextEditingController(text: '133.5');
 
   @override
   Widget build(BuildContext context) {
-    // Optionally retrieve from Get.arguments if needed
-    // final String selectedBank = Get.arguments['selectedBank'] ?? widget.selectedBank;
-
     return Scaffold(
-      resizeToAvoidBottomInset: false, // Keyboard doesn't resize layout
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Get.back(),
-        ),
-        title: Text(
-          "Funds Withdraw",
-          style: TextStyle(fontSize: 18.sp, color: Colors.black, fontWeight: FontWeight.w600),
-        ),
-        centerTitle: true,
+      appBar: SecondaryAppBar(
+        title: "Funds Withdraw",
+        showBackButton: true,
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -52,27 +39,24 @@ class _FundsWithdrawPageState extends State<FundsWithdrawPage> {
               title: Text(widget.selectedBank, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w500)),
               trailing: Icon(Icons.chevron_right),
               onTap: () {
-                // Navigate to change bank if needed (e.g., back to NewPayoutPage)
+                // Navigate to change bank if needed
               },
             ),
             Divider(),
 
-            SizedBox(height: 10.h),
-            // Withdrawal Amount
-            Text("Withdrawal Amount", style: TextStyle(fontSize: 14.sp, color: Colors.black54)),
-            SizedBox(height: 4.h),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "\$${_amountController.text}",
-                  style: TextStyle(
-                    fontSize: 40.sp,
-                    fontWeight: FontWeight.bold,
-                    color: primaryTextColor,
-                  ),
-                ),
-              ],
+            SizedBox(height: 20.h),
+
+            // Withdrawal Amount (with device keyboard)
+            Text("Withdrawal Amount", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: _amountController,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              style: TextStyle(fontSize: 30.sp, fontWeight: FontWeight.bold, color: primaryTextColor),
+              decoration: InputDecoration(
+                prefixText: "\$ ",
+                border: InputBorder.none,
+              ),
             ),
             Divider(),
 
@@ -85,12 +69,12 @@ class _FundsWithdrawPageState extends State<FundsWithdrawPage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Charges", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500)),
+                    Text("Charges", style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700)),
                     SizedBox(height: 4.h),
-                    Text("No charges", style: TextStyle(fontSize: 12.sp, color: Colors.grey)),
+                    Text("No charges", style: TextStyle(fontSize: 14.sp, color: Colors.grey)),
                   ],
                 ),
-                Text("\$0", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500)),
+                Text("\$0", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
               ],
             ),
             SizedBox(height: 30.h),
@@ -99,61 +83,12 @@ class _FundsWithdrawPageState extends State<FundsWithdrawPage> {
             CustomGradientButton(
               text: "Transfer",
               onPressed: () {
-                // Handle transfer logic here (e.g., API call)
                 debugPrint("Transferring \$${_amountController.text} to ${widget.selectedBank}");
-                Get.back(); // Example: Go back after transfer
+                Get.toNamed('/paymentHistoryPage'); // Replace with confirmation or API call
               },
             ),
+            SizedBox(height: 30.h),
           ],
-        ),
-      ),
-
-      // Custom keyboard style
-      bottomSheet: Container(
-        color: Colors.grey.shade200,
-        padding: EdgeInsets.only(bottom: 10.h),
-        child: GridView.builder(
-          shrinkWrap: true,
-          itemCount: 12,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 2.2,
-          ),
-          itemBuilder: (context, index) {
-            if (index == 9) return const SizedBox(); // Blank space
-            if (index == 10) {
-              return _buildKeyboardButton("0");
-            } else if (index == 11) {
-              return _buildKeyboardButton("<", isBackspace: true);
-            }
-            return _buildKeyboardButton("${index + 1}");
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildKeyboardButton(String label, {bool isBackspace = false}) {
-    return GestureDetector(
-      onTap: () {
-        if (isBackspace) {
-          if (_amountController.text.isNotEmpty) {
-            setState(() {
-              _amountController.text = _amountController.text.substring(0, _amountController.text.length - 1);
-            });
-          }
-        } else {
-          setState(() {
-            _amountController.text += label;
-          });
-        }
-      },
-      child: Center(
-        child: isBackspace
-            ? Icon(Icons.backspace_outlined, color: Colors.black54)
-            : Text(
-          label,
-          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
         ),
       ),
     );

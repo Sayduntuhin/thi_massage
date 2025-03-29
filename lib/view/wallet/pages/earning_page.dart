@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
 import '../../../themes/colors.dart';
 class EarningsPage extends StatefulWidget {
@@ -24,23 +25,7 @@ class _EarningsPageState extends State<EarningsPage> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Get.back(),
-        ),
-        title: Text(
-          'Earnings',
-          style: TextStyle(
-            fontSize: 18.sp,
-            color: Colors.black,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      appBar: SecondaryAppBar(title: "Earning",showBackButton: false,),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
         child: Column(

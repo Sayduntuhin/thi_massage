@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/booking/pages/booking_page.dart';
+import 'package:thi_massage/view/booking/pages/therapist_booking_page.dart';
 import 'package:thi_massage/view/chat/pages/chat_list_page.dart';
 import 'package:thi_massage/view/home/page/therapist_home_page.dart';
 import 'package:thi_massage/view/profile/pages/profile_page.dart';
@@ -46,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
           userTypeController.isTherapist.value ? EarningsPage() : WalletScreen(),
           ChatListScreen(),
           userTypeController.isTherapist.value ? const TherapistHomePage() : HomeContent(),
-          BookingsPage(),
+          userTypeController.isTherapist.value ? CalendarPage() : BookingsPage(),
           ProfilePage(),
         ];
         return _pages[_selectedIndex];
