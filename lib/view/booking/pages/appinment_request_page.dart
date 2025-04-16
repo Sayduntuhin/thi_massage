@@ -63,15 +63,34 @@ class AppointmentRequestPage extends StatelessWidget {
                   ),
                 ),
 
+
+                // Customer Preferences
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Customer Preferences", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
+                      Icon(Icons.keyboard_arrow_down, size: 20.sp),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 10.h),
+
+                // Map (Dummy Map Image)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12.r),
+                    child: Image.asset("assets/images/map.png", height: 140.h, fit: BoxFit.cover),
+                  ),
+                ),
+                SizedBox(height: 10.h),
                 // Client Info Card
                 Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  margin: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
                   padding: EdgeInsets.all(12.r),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12.r),
-                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
-                  ),
+
                   child: Row(
                     children: [
                       CircleAvatar(radius: 24.r, backgroundImage: AssetImage("assets/images/profilepic.png")),
@@ -107,29 +126,6 @@ class AppointmentRequestPage extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                // Customer Preferences
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Customer Preferences", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                      Icon(Icons.keyboard_arrow_down, size: 20.sp),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 10.h),
-
-                // Map (Dummy Map Image)
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12.r),
-                    child: Image.asset("assets/images/map.png", height: 140.h, fit: BoxFit.cover),
-                  ),
-                ),
-                SizedBox(height: 10.h),
 
                 // Duration
                 Padding(

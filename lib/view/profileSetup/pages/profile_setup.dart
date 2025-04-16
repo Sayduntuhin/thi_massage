@@ -60,7 +60,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   Obx(() => Text(
                     "${userTypeController.isTherapist.value ? 'Therapist' : 'Client'} \nProfile Setup",
                     style: TextStyle(
-                      fontSize: 35.sp,
+                      fontSize: 30.sp,
                       fontWeight: FontWeight.bold,
                       color: primaryTextColor,
                       fontFamily: "PlayfairDisplay",

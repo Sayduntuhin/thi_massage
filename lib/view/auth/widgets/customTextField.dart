@@ -6,20 +6,28 @@ class CustomTextField extends StatelessWidget {
   final String hintText;
   final IconData icon;
   final bool isPassword;
+  final TextEditingController? controller; // Added for input control
+  final TextInputType? keyboardType; // Added for input type (e.g., email, number)
+  final ValueChanged<String>? onChanged; // Optional callback for real-time input changes
 
   const CustomTextField({
     super.key,
     required this.hintText,
     required this.icon,
     this.isPassword = false,
-
+    this.controller,
+    this.keyboardType,
+    this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      obscureText: isPassword,
-      autofocus: true,
+      controller: controller, // Assign controller
+      obscureText: isPassword, // Toggle for password visibility
+      keyboardType: keyboardType, // Set keyboard type (e.g., email, number)
+      onChanged: onChanged, // Handle real-time input changes
+      autofocus: true, // Kept from original
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.black),
         hintText: hintText,
@@ -38,7 +46,7 @@ class CustomTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(25.r),
           borderSide: BorderSide(color: borderColor.withAlpha(40), width: 2.w),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 16.h ),
+        contentPadding: EdgeInsets.symmetric(vertical: 16.h),
       ),
     );
   }

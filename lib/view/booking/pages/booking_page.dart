@@ -192,7 +192,10 @@ class BookingCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                      SizedBox(
+                        height: 0.03.sh,
+                          width: 0.38.sw,
+                          child: Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold))),
                       Text("Therapist: ", style: TextStyle(fontSize: 12.sp, color: Colors.black54)),
                       Text(
                         therapist,
@@ -204,14 +207,14 @@ class BookingCard extends StatelessWidget {
               ),
 
               SizedBox(
-                width: .26.sw,
+                width: .27.sw,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 12, top: 10),
                   child: Column(
                     children: [
                       Container(
-                        width: 100.w,
-                        padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 3.h),
+                        width: 1.sw,
+                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 3.h),
                         decoration: BoxDecoration(
                           color: status == "Completed" ? const Color(0xFF28B446) : secounderyBorderColor,
                           borderRadius: BorderRadius.only(topLeft: Radius.circular(15.r), bottomLeft: Radius.circular(15.r)),

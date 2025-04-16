@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
+import 'package:toastification/toastification.dart';
+import '../../../api/api_service.dart';
+import '../../../controller/user_controller.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/custom_snackbar.dart';
+import '../../widgets/loading_indicator.dart';
 
 class OTPVerificationPage extends StatefulWidget {
   const OTPVerificationPage({super.key});
@@ -17,20 +22,87 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
   TextEditingController otpController = TextEditingController();
   String currentOtp = "";
   String? flowType;
+  String? email;
 
   @override
   void initState() {
     super.initState();
-    flowType = Get.arguments ?? "signup"; // Default to signup if no argument is passed
+    final arguments = Get.arguments as Map<String, dynamic>?;
+    flowType = arguments?['source'] ?? "signup";
+    email = arguments?['email'] ?? "";
   }
 
-  void handleOTPSubmit() {
+  @override
+  void dispose() {
+    otpController.dispose();
+    super.dispose();
+  }
+
+  Future<void> handleOTPSubmit() async {
+    if (currentOtp.length != 4) {
+      CustomSnackBar.show(context, "Please enter a 4-digit OTP", type: ToastificationType.error);
+      return;
+    }
+
     debugPrint("Entered OTP: $currentOtp");
 
-    if (flowType == "forgetPassword") {
-      Get.toNamed("/resetPassword"); // Navigate to Reset Password Page
-    } else {
-      Get.toNamed("/profileSetup"); // Navigate to Profile Setup Page
+    LoadingManager.showLoading();
+
+    try {
+      final apiService = ApiService();
+      await apiService.verifyOtp(email!, currentOtp);
+
+      LoadingManager.hideLoading();
+
+      CustomSnackBar.show(context, "Email verified successfully!", type: ToastificationType.success);
+
+      if (flowType == "forgetPassword") {
+        Get.toNamed("/resetPassword");
+      } else {
+        final userTypeController = Get.find<UserTypeController>();
+        Get.toNamed(
+          "/profileSetup",
+          arguments: {'isTherapist': userTypeController.isTherapist.value},
+        );
+      }
+    } catch (e) {
+      LoadingManager.hideLoading();
+
+      String errorMessage = "Failed to verify OTP. Please try again.";
+      if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      }
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+    }
+  }
+
+  Future<void> handleResendOTP() async {
+    if (email!.isEmpty) {
+      CustomSnackBar.show(context, "Email not provided", type: ToastificationType.error);
+      return;
+    }
+
+    LoadingManager.showLoading();
+
+    try {
+      final apiService = ApiService();
+      await apiService.resendOtp(email!);
+
+      LoadingManager.hideLoading();
+
+      CustomSnackBar.show(context, "OTP resent successfully!", type: ToastificationType.success);
+    } catch (e) {
+      LoadingManager.hideLoading();
+
+      String errorMessage = "Failed to resend OTP. Please try again.";
+      if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      }
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
 
@@ -46,10 +118,8 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
             SizedBox(height: 0.05.sh),
             const CustomAppBar(),
             SizedBox(height: 0.04.sh),
-
-            // Title
             Text(
-              "Verify phone",
+              "Verify email",
               style: TextStyle(
                 fontSize: 38.sp,
                 fontWeight: FontWeight.bold,
@@ -58,23 +128,27 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
               ),
             ),
             SizedBox(height: 5.h),
-
-            // Subtitle with masked phone number
             Text.rich(
               TextSpan(
-                text: "Please enter the 4-digit OTP sent at ",
-                style: TextStyle(fontSize: 14.sp, color: secounderyTextColor, fontFamily: "Urbanist"),
+                text: "Please enter the 4-digit OTP sent to ",
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: secounderyTextColor,
+                  fontFamily: "Urbanist",
+                ),
                 children: [
                   TextSpan(
-                    text: "735-223-xxxx",
-                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: buttonTextColor),
+                    text: email,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.bold,
+                      color: buttonTextColor,
+                    ),
                   ),
                 ],
               ),
             ),
             SizedBox(height: 20.h),
-
-            // OTP Input Field
             Center(
               child: PinCodeTextField(
                 autoFocus: true,
@@ -93,10 +167,10 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
                   activeFillColor: const Color(0xFFF8F8F8),
                   selectedFillColor: const Color(0xFFF8F8F8),
                   inactiveFillColor: const Color(0xFFF8F8F8),
-                  inactiveColor: Colors.grey, // No border initially
-                  selectedColor: const Color(0xFF28B446), // Green border when selected
-                  activeColor: const Color(0xFF28B446),   // Green border when active
-                  borderWidth: currentOtp.isEmpty ? 0 : 1, // Border appears when OTP is entered
+                  inactiveColor: Colors.grey,
+                  selectedColor: const Color(0xFF28B446),
+                  activeColor: const Color(0xFF28B446),
+                  borderWidth: currentOtp.isEmpty ? 0 : 1,
                 ),
                 cursorColor: primaryTextColor,
                 controller: otpController,
@@ -108,13 +182,9 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
               ),
             ),
             SizedBox(height: 10.h),
-
-            // Resend OTP
             Center(
               child: TextButton(
-                onPressed: () {
-                  debugPrint("Resend OTP tapped");
-                },
+                onPressed: handleResendOTP,
                 child: Text(
                   "Resend OTP",
                   style: TextStyle(fontSize: 14.sp, color: buttonTextColor),
@@ -122,8 +192,6 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
               ),
             ),
             SizedBox(height: 0.06.sh),
-
-            // Confirm Button - Visible only when 4 digits are entered
             if (currentOtp.length == 4)
               ThaiMassageButton(
                 text: "Confirm",

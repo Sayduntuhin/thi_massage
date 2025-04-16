@@ -1,3 +1,4 @@
+import 'package:country_pickers/countries.dart';
 import 'package:country_pickers/country.dart';
 import 'package:country_pickers/utils/utils.dart';
 import 'package:flutter/material.dart';
@@ -5,38 +6,48 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../themes/colors.dart';
 
 class PhoneNumberField extends StatefulWidget {
-  const PhoneNumberField({super.key});
+  final TextEditingController? controller; // Controller for phone number input
+  final ValueChanged<String>? onChanged; // Optional callback for input changes
+
+  const PhoneNumberField({
+    super.key,
+    this.controller,
+    this.onChanged,
+  });
 
   @override
   State<PhoneNumberField> createState() => _PhoneNumberFieldState();
 }
 
 class _PhoneNumberFieldState extends State<PhoneNumberField> {
-  // Manually defining a list of common countries
-  final List<Country> _allCountries = [
-    CountryPickerUtils.getCountryByIsoCode('US'), // United States
-    CountryPickerUtils.getCountryByIsoCode('IN'), // India
-    CountryPickerUtils.getCountryByIsoCode('GB'), // United Kingdom
-    CountryPickerUtils.getCountryByIsoCode('CA'), // Canada
-    CountryPickerUtils.getCountryByIsoCode('AU'), // Australia
-    CountryPickerUtils.getCountryByIsoCode('DE'), // Germany
-    CountryPickerUtils.getCountryByIsoCode('FR'), // France
-    CountryPickerUtils.getCountryByIsoCode('JP'), // Japan
-    CountryPickerUtils.getCountryByIsoCode('BR'), // Brazil
-    CountryPickerUtils.getCountryByIsoCode('ZA'), // South Africa
-    CountryPickerUtils.getCountryByIsoCode('CN'), // China
-  ];
-
+  final List<Country> _allCountries = countryList;
   Country _selectedCountry = CountryPickerUtils.getCountryByIsoCode('US'); // Default to US
+  late TextEditingController _internalController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Use provided controller or create an internal one
+    _internalController = widget.controller ?? TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    // Dispose internal controller only if widget.controller is null
+    if (widget.controller == null) {
+      _internalController.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w,vertical: 3.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 3.h),
       decoration: BoxDecoration(
         color: textFieldColor,
         borderRadius: BorderRadius.circular(25.r),
-        border: Border.all(color:borderColor.withAlpha(40),width: 1.5.w),
+        border: Border.all(color: borderColor.withAlpha(40), width: 1.5.w),
       ),
       child: Row(
         children: [
@@ -49,8 +60,10 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
               children: [
                 CountryPickerUtils.getDefaultFlagImage(_selectedCountry),
                 SizedBox(width: 5.w),
-                Text("+${_selectedCountry.phoneCode}",
-                    style: TextStyle(fontSize: 14.sp, color: Colors.black)),
+                Text(
+                  "+${_selectedCountry.phoneCode}",
+                  style: TextStyle(fontSize: 14.sp, color: Colors.black),
+                ),
                 Icon(Icons.arrow_drop_down, color: Colors.black54),
               ],
             ),
@@ -60,13 +73,15 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
           // Phone Number Input Field
           Expanded(
             child: TextField(
+              controller: _internalController,
+              onChanged: widget.onChanged,
               decoration: InputDecoration(
                 hintText: "Enter phone number",
                 hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
                 border: InputBorder.none,
               ),
               keyboardType: TextInputType.phone,
-              autofocus: true,
+              autofocus: false, // Changed to false to avoid focus conflicts
             ),
           ),
         ],
@@ -81,12 +96,13 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
       builder: (context) {
         return Container(
           height: 400.h,
-         decoration: BoxDecoration(
-           color: Colors.white,
-           borderRadius: BorderRadius.only(
-             topLeft: Radius.circular(20.r),
-             topRight: Radius.circular(20.r),
-           ),),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20.r),
+              topRight: Radius.circular(20.r),
+            ),
+          ),
           child: Column(
             children: [
               Padding(
@@ -119,5 +135,10 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
         );
       },
     );
+  }
+
+  // Helper method to get full phone number with country code
+  String getFullPhoneNumber() {
+    return "+${_selectedCountry.phoneCode}${_internalController.text.trim()}";
   }
 }
