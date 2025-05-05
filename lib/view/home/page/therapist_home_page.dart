@@ -438,99 +438,104 @@ class _TherapistHomePageState extends State<TherapistHomePage> with SingleTicker
     required String time,
     bool isFemale = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        children: [
-          Container(
-            height: 0.1.sh,
-            width: 0.18.sw,
-            alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(vertical: 10.h),
-            decoration: BoxDecoration(
-              color: const Color(0xFFB28D28),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12.r),
-                bottomLeft: Radius.circular(12.r),
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(day,
-                    style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white)),
-                Text(month, style: TextStyle(fontSize: 14.sp, color: Colors.white)),
-                Text(year, style: TextStyle(fontSize: 10.sp, color: Colors.white)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(
+    return GestureDetector(
+        onTap: () {
+          Get.toNamed('/appointmentRequestPage');// Navigate to appointment details page
+        },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: Row(
+          children: [
+            Container(
               height: 0.1.sh,
-              padding: EdgeInsets.all(10.r),
+              width: 0.18.sw,
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(vertical: 10.h),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFB28D28),
                 borderRadius: BorderRadius.only(
-                  topRight: Radius.circular(12.r),
-                  bottomRight: Radius.circular(12.r),
+                  topLeft: Radius.circular(12.r),
+                  bottomLeft: Radius.circular(12.r),
                 ),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(2, 2)),
-                ],
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        service,
-                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time, size: 16.sp, color: Colors.black45),
-                          SizedBox(width: 4.w),
-                          Text(time, style: TextStyle(fontSize: 12.sp, color: Colors.black54)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 6.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            name,
-                            style: TextStyle(
-                                fontSize: 13.sp, color: Colors.black87, fontWeight: FontWeight.w500),
-                          ),
-                          SizedBox(width: 4.w),
-                          Icon(
-                            isFemale ? Icons.female : Icons.male,
-                            color: isFemale ? Colors.purple : Colors.blue,
-                            size: 16.sp,
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          _statusButton(
-                              "Accept", const Color(0xFFCBF299), const Color(0xff33993A), const Color(0xFFCBF299)),
-                          SizedBox(width: 6.w),
-                          _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
-                        ],
-                      ),
-                    ],
-                  ),
+                  Text(day,
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(month, style: TextStyle(fontSize: 14.sp, color: Colors.white)),
+                  Text(year, style: TextStyle(fontSize: 10.sp, color: Colors.white)),
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: Container(
+                height: 0.1.sh,
+                padding: EdgeInsets.all(10.r),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(12.r),
+                    bottomRight: Radius.circular(12.r),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(2, 2)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          service,
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                        ),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time, size: 16.sp, color: Colors.black45),
+                            SizedBox(width: 4.w),
+                            Text(time, style: TextStyle(fontSize: 12.sp, color: Colors.black54)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              name,
+                              style: TextStyle(
+                                  fontSize: 13.sp, color: Colors.black87, fontWeight: FontWeight.w500),
+                            ),
+                            SizedBox(width: 4.w),
+                            Icon(
+                              isFemale ? Icons.female : Icons.male,
+                              color: isFemale ? Colors.purple : Colors.blue,
+                              size: 16.sp,
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            _statusButton(
+                                "Accept", const Color(0xFFCBF299), const Color(0xff33993A), const Color(0xFFCBF299)),
+                            SizedBox(width: 6.w),
+                            _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

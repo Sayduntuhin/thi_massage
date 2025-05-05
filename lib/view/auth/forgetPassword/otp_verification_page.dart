@@ -6,6 +6,7 @@ import 'package:toastification/toastification.dart';
 import '../../../api/api_service.dart';
 import '../../../controller/user_controller.dart';
 import '../../../themes/colors.dart';
+import '../../widgets/app_logger.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_snackbar.dart';
@@ -23,6 +24,12 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
   String currentOtp = "";
   String? flowType;
   String? email;
+  String? fullName;
+  String? phoneNumber;
+  String? countryCode;
+  bool? isTherapist;
+  int? userId;
+  int? profileId;
 
   @override
   void initState() {
@@ -30,6 +37,13 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
     final arguments = Get.arguments as Map<String, dynamic>?;
     flowType = arguments?['source'] ?? "signup";
     email = arguments?['email'] ?? "";
+    fullName = arguments?['full_name'] ?? "";
+    phoneNumber = arguments?['phone_number'] ?? "";
+    countryCode = arguments?['country_code'] ?? "+1";
+    isTherapist = arguments?['isTherapist'] ?? false;
+    userId = arguments?['user_id'];
+    profileId = arguments?['profile_id'];
+    AppLogger.debug("OTPVerificationPage arguments: $arguments");
   }
 
   @override
@@ -44,7 +58,13 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
       return;
     }
 
-    debugPrint("Entered OTP: $currentOtp");
+    if (userId == null || profileId == null) {
+      AppLogger.error("Missing user_id or profile_id in OTPVerificationPage arguments: $Get.arguments");
+      CustomSnackBar.show(context, "User or profile data missing", type: ToastificationType.error);
+      return;
+    }
+
+    AppLogger.debug("Entered OTP: $currentOtp, Country code: $countryCode");
 
     LoadingManager.showLoading();
 
@@ -62,7 +82,16 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
         final userTypeController = Get.find<UserTypeController>();
         Get.toNamed(
           "/profileSetup",
-          arguments: {'isTherapist': userTypeController.isTherapist.value},
+          arguments: {
+            'isTherapist': isTherapist ?? userTypeController.isTherapist.value,
+            'full_name': fullName,
+            'email': email,
+            'phone_number': phoneNumber,
+            'country_code': countryCode,
+            'source': flowType,
+            'user_id': userId, // Pass user_id
+            'profile_id': profileId, // Pass profile_id
+          },
         );
       }
     } catch (e) {
@@ -75,6 +104,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
         errorMessage = "No internet connection.";
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+      AppLogger.error("OTP verification error: $e");
     }
   }
 
@@ -103,6 +133,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
         errorMessage = "No internet connection.";
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+      AppLogger.error("Resend OTP error: $e");
     }
   }
 

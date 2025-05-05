@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -13,14 +12,14 @@ import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import 'package:thi_massage/view/widgets/custom_snackbar.dart';
 import 'package:toastification/toastification.dart';
 
-class EditProfilePage extends StatefulWidget {
-  const EditProfilePage({super.key});
+class TherapistEditPage extends StatefulWidget {
+  const TherapistEditPage({super.key});
 
   @override
-  State<EditProfilePage> createState() => _EditProfilePageState();
+  State<TherapistEditPage> createState() => _TherapistEditPageState();
 }
 
-class _EditProfilePageState extends State<EditProfilePage> {
+class _TherapistEditPageState extends State<TherapistEditPage> {
   bool isEditing = false;
   File? _image;
   String? _imageUrl;
@@ -30,13 +29,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController contactController = TextEditingController();
   final TextEditingController dobController = TextEditingController();
+  final TextEditingController aboutController = TextEditingController();
+  final TextEditingController experienceController = TextEditingController();
 
-  // Store initial values to detect changes
-  String? initialFirstName;
-  String? initialLastName;
-  String? initialPhone;
-  String? initialDob;
-  String? initialImageUrl;
+  // For techniques
+  List<String> selectedTechniques = [];
+  List<String> availableTechniques = [
+    'Kneading',
+    'Aromatherapy',
+    'Effleurage',
+    'Deep Tissue',
+    'Swedish',
+    'Hot Stone',
+    'Thai Massage',
+    'Reflexology'
+  ];
 
   int? userId;
   int? profileId;
@@ -61,7 +68,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       AppLogger.debug("Fetched userId from storage: $userId");
     }
 
-    AppLogger.debug("EditProfilePage: userId=$userId, profileId=$profileId");
+    AppLogger.debug("TherapistEditPage: userId=$userId, profileId=$profileId");
 
     if (userId == null) {
       CustomSnackBar.show(context, "User ID missing. Please log in again.", type: ToastificationType.error);
@@ -69,7 +76,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       return;
     }
 
-    fetchProfileData();
+    //fetchProfileData();
   }
 
   @override
@@ -79,17 +86,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
     emailController.dispose();
     contactController.dispose();
     dobController.dispose();
+    aboutController.dispose();
+    experienceController.dispose();
     super.dispose();
   }
 
-  Future<void> fetchProfileData() async {
+/*  Future<void> fetchProfileData() async {
     setState(() {
       isLoading = true;
     });
 
     try {
       final apiService = ApiService();
-      final response = await apiService.getClientProfile();
+      final response = await apiService.getTherapistProfile(userId!);
       AppLogger.debug("Profile fetched: $response");
 
       setState(() {
@@ -100,17 +109,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
         emailController.text = response['email'] ?? '';
         contactController.text = response['phone'] ?? '';
         dobController.text = response['date_of_birth'] ?? '';
+        aboutController.text = response['about'] ?? '';
+        experienceController.text = response['experience'] ?? '';
 
-        // Store initial values
-        initialFirstName = firstNameController.text;
-        initialLastName = lastNameController.text;
-        initialPhone = contactController.text;
-        initialDob = dobController.text;
-        initialImageUrl = _imageUrl;
+        // Parse techniques
+        if (response['techniques'] != null && response['techniques'] is List) {
+          selectedTechniques = List<String>.from(response['techniques']);
+        }
 
-        _imageUrl = response['image'] != '/api/media/documents/default.jpg' ? response['image'] : null;
+        _imageUrl = response['image'] != '/media/documents/default.jpg' ? response['image'] : null;
+        // Adjust image URL if backend doesn't include /api/
+        if (_imageUrl != null && !_imageUrl!.startsWith('/api/')) {
+          _imageUrl = '/api$_imageUrl';
+        }
         profileId = response['id'];
-        userId = response['user'];
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$_imageUrl");
       });
     } catch (e) {
@@ -118,7 +130,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (e is NotFoundException) {
         errorMessage = "Profile not found. Please set up your profile.";
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-        Get.toNamed('/profileSetup', arguments: {
+        Get.toNamed('/therapistProfileSetup', arguments: {
           'user_id': userId,
           'profile_id': profileId,
           'source': 'edit_profile',
@@ -138,7 +150,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         isLoading = false;
       });
     }
-  }
+  }*/
 
   Future<void> _pickImage() async {
     try {
@@ -155,47 +167,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  Future<void> _saveProfile() async {
+ /* Future<void> _saveProfile() async {
+    if (userId == null || profileId == null) {
+      CustomSnackBar.show(context, "User or profile data missing", type: ToastificationType.error);
+      return;
+    }
+
     setState(() {
       isLoading = true;
     });
 
     try {
       final apiService = ApiService();
+      final fullName = "${firstNameController.text.trim()} ${lastNameController.text.trim()}".trim();
+      await apiService.updateTherapistProfile(
+        userId!,
+        profileId: profileId!,
+        image: _image,
+        phone: contactController.text.trim().isNotEmpty ? contactController.text.trim() : null,
+        dateOfBirth: dobController.text.trim().isNotEmpty ? dobController.text.trim() : null,
+        about: aboutController.text.trim().isNotEmpty ? aboutController.text.trim() : null,
+        experience: experienceController.text.trim().isNotEmpty ? experienceController.text.trim() : null,
+        techniques: selectedTechniques.isNotEmpty ? selectedTechniques : null,
+      );
 
-      // Collect edited fields
-      final Map<String, dynamic> fields = {};
-
-      // Check if name has changed
-      final currentFullName = "${firstNameController.text.trim()} ${lastNameController.text.trim()}".trim();
-      final initialFullName = "${initialFirstName ?? ''} ${initialLastName ?? ''}".trim();
-      if (currentFullName != initialFullName && currentFullName.isNotEmpty) {
-        fields['full_name'] = currentFullName;
-      }
-
-      // Check if phone has changed
-      if (contactController.text.trim() != initialPhone && contactController.text.trim().isNotEmpty) {
-        fields['phone'] = contactController.text.trim();
-      }
-
-      // Check if DOB has changed
-      if (dobController.text.trim() != initialDob && dobController.text.trim().isNotEmpty) {
-        fields['date_of_birth'] = dobController.text.trim();
-      }
-
-      // Log fields to be sent
-      AppLogger.debug("Fields to update: $fields, Image: ${_image != null}");
-
-      // Only send request if there are changes
-      if (fields.isNotEmpty || _image != null) {
-        final response = await apiService.updateClientProfile(fields, image: _image);
-        AppLogger.info("Profile updated successfully: $response");
-        CustomSnackBar.show(context, response['message'] ?? "Profile updated successfully!", type: ToastificationType.success);
-      } else {
-        AppLogger.info("No changes to update");
-        CustomSnackBar.show(context, "No changes made", type: ToastificationType.info);
-      }
-
+      AppLogger.info("Profile updated successfully");
+      CustomSnackBar.show(context, "Profile updated successfully!", type: ToastificationType.success);
       setState(() {
         isEditing = false; // Exit edit mode
       });
@@ -217,12 +214,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
         isLoading = false;
       });
     }
+  }*/
+
+  void _toggleTechnique(String technique) {
+    setState(() {
+      if (selectedTechniques.contains(technique)) {
+        selectedTechniques.remove(technique);
+      } else {
+        selectedTechniques.add(technique);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: SecondaryAppBar(title: "Edit Profile"),
+      appBar: SecondaryAppBar(title: "Edit Profile",showBackButton: false,),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -250,29 +257,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       radius: 50.r,
                       backgroundColor: Colors.transparent,
                       child: ClipOval(
-                        child: _image != null
-                            ? Image.file(
-                          _image!,
+                        child: Image(
+                          image: _image != null
+                              ? FileImage(_image!)
+                              : _imageUrl != null
+                              ? NetworkImage('${ApiService.baseUrl}$_imageUrl')
+                              : AssetImage("assets/images/empty_person.png") as ImageProvider,
                           fit: BoxFit.cover,
                           width: 100.r,
                           height: 100.r,
-                        )
-                            : CachedNetworkImage(
-                          imageUrl: '${ApiService.baseUrl}$_imageUrl',
-                          fit: BoxFit.cover,
-                          width: 100.r,
-                          height: 100.r,
-                          placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) {
+                          errorBuilder: (context, error, stackTrace) {
                             AppLogger.error("Failed to load image: ${ApiService.baseUrl}$_imageUrl, Error: $error");
+                            setState(() {
+                              _imageUrl = null; // Clear invalid URL
+                            });
                             return Image.asset(
-                              "assets/images/empty_person.png",
+                              "assets/images/profilepic.png",
                               fit: BoxFit.cover,
                               width: 100.r,
                               height: 100.r,
                             );
                           },
-                        )
+                        ),
                       ),
                     ),
                   ),
@@ -292,20 +298,38 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ],
               ),
               SizedBox(height: 20.h),
+
+              // Profile Section
               _buildSectionTitle("Profile"),
               Divider(color: Color(0xffD0D0D0)),
               SizedBox(height: 8.h),
               _buildProfileField("First name", firstNameController, isEditing),
               _buildProfileField("Last name", lastNameController, isEditing),
-              _buildProfileField("Email", emailController, false), // Email always non-editable
+              _buildProfileField("Email", emailController, isEditing),
               _buildProfileField("Contact Number", contactController, isEditing),
               _buildProfileField("Date of Birth", dobController, isEditing),
+
+              SizedBox(height: 20.h),
+
+              // Account Settings Section
+              _buildSectionTitle("Account Settings"),
+              Divider(color: Color(0xffD0D0D0)),
+              SizedBox(height: 8.h),
+              _buildLabelText("About"),
+              isEditing
+                  ? _buildTextAreaField(aboutController)
+                  : _buildAboutText(aboutController.text),
+              SizedBox(height: 16.h),
+              _buildExperienceField("Experience", experienceController, isEditing),
+              SizedBox(height: 16.h),
+              _buildTechniquesSection(),
+
               if (isEditing) ...[
                 SizedBox(height: 20.h),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : _saveProfile,
+                    onPressed: isLoading ? null : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryButtonColor,
                       padding: EdgeInsets.symmetric(vertical: 15.h),
@@ -412,6 +436,223 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildExperienceField(String label, TextEditingController controller, bool isEditable) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 16.h),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w500,
+              color: Color(0xff383535),
+            ),
+          ),
+          SizedBox(
+            width: 0.25.sw,
+            child: isEditable
+                ? TextField(
+              controller: controller,
+              enabled: isEditable,
+              style: TextStyle(fontSize: 14.sp, color: Colors.black),
+              textAlign: TextAlign.right,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Color(0xFFE8ECEF),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                ),
+                contentPadding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 12.w),
+                suffixText: controller.text.isNotEmpty ? "Years" : "",
+              ),
+            )
+                : Container(
+              padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 16.w),
+              decoration: BoxDecoration(
+                color: Color(0xFFE8ECEF),
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: Text(
+                controller.text.isEmpty ? '-' : "${controller.text} Years",
+                style: TextStyle(fontSize: 16.sp, color: Colors.black),
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabelText(String label) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: 8.h),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w500,
+            color: Color(0xff383535),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextAreaField(TextEditingController controller) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 16.h),
+      child: TextField(
+        controller: controller,
+        maxLines: 5,
+        style: TextStyle(fontSize: 14.sp, color: Colors.black),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Color(0xFFE8ECEF),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(color: Colors.black12, width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(color: Colors.black12, width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(color: Colors.black12, width: 1),
+          ),
+          contentPadding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 12.w),
+          hintText: "Tell us about yourself and your massage specialties...",
+          hintStyle: TextStyle(color: Colors.black38),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAboutText(String text) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12.w),
+      margin: EdgeInsets.only(bottom: 16.h),
+      decoration: BoxDecoration(
+        color: Color(0xFFE8ECEF),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Text(
+        text.isEmpty ? 'Placeholder' : text,
+        style: TextStyle(
+          fontSize: 14.sp,
+          color: text.isEmpty ? Colors.black38 : Colors.black,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTechniquesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLabelText("Techniques"),
+        isEditing
+            ? _buildEditableTechniques()
+            : _buildDisplayTechniques(),
+      ],
+    );
+  }
+
+  Widget _buildEditableTechniques() {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: availableTechniques.map((technique) {
+        final isSelected = selectedTechniques.contains(technique);
+        return GestureDetector(
+          onTap: () => _toggleTechnique(technique),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: isSelected ? primaryButtonColor : Colors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              border: Border.all(
+                color: isSelected ? primaryButtonColor : Colors.grey.shade300,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isSelected)
+                  Padding(
+                    padding: EdgeInsets.only(right: 4.w),
+                    child: Icon(Icons.check, size: 16.sp, color: Colors.white),
+                  ),
+                Text(
+                  technique,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.black,
+                    fontSize: 14.sp,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildDisplayTechniques() {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: selectedTechniques.isEmpty
+          ? [
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          child: Text(
+            "No techniques selected",
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 14.sp,
+            ),
+          ),
+        )
+      ]
+          : selectedTechniques.map((technique) {
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          child: Text(
+            technique,
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 14.sp,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

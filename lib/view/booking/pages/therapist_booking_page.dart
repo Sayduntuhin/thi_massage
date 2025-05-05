@@ -15,6 +15,7 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  bool _showCalendar = true; // To toggle between Calendar and Requests views
 
   final Map<DateTime, List<Map<String, dynamic>>> appointments = {
     DateTime.utc(2025, 3, 8): [
@@ -40,6 +41,37 @@ class _CalendarPageState extends State<CalendarPage> {
     // Add more dates and data here
   };
 
+  // Sample appointment requests data
+  final List<Map<String, dynamic>> appointmentRequests = [
+    {
+      "name": "John Smith",
+      "service": "Thai Massage",
+      "day": "12",
+      "month": "May",
+      "year": "2025",
+      "time": "10:00 AM",
+      "isFemale": false,
+    },
+    {
+      "name": "Sarah Johnson",
+      "service": "Full Body Massage",
+      "day": "15",
+      "month": "May",
+      "year": "2025",
+      "time": "2:30 PM",
+      "isFemale": true,
+    },
+    {
+      "name": "Robert Lee",
+      "service": "Deep Tissue Massage",
+      "day": "18",
+      "month": "May",
+      "year": "2025",
+      "time": "4:00 PM",
+      "isFemale": false,
+    },
+  ];
+
   List<Map<String, dynamic>> getAppointmentsForDay(DateTime day) {
     return appointments[DateTime.utc(day.year, day.month, day.day)] ?? [];
   }
@@ -48,84 +80,196 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: SecondaryAppBar(title: "Calendar", showBackButton: false),
-      body: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Calendar Widget
-            Container(
+      appBar: SecondaryAppBar(title: _showCalendar ? "Calendar" : "Requests", showBackButton: false),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Toggle Button
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+            child: Container(
+              height: 40.h,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14.r),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r,offset: Offset(0, 5))],
+                borderRadius: BorderRadius.circular(20.r),
+                border: Border.all(color: const Color(0xFFB28D28)),
               ),
-              child: Column(
-                children: [
-                  TableCalendar(
-                    firstDay: DateTime.utc(2024, 1, 1),
-                    lastDay: DateTime.utc(2026, 12, 31),
-                    focusedDay: _focusedDay,
-                    calendarFormat: CalendarFormat.month,
-                    selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                    onDaySelected: (selectedDay, focusedDay) {
-                      setState(() {
-                        _selectedDay = selectedDay;
-                        _focusedDay = focusedDay;
-                      });
-                    },
-                    calendarStyle: CalendarStyle(
-                      todayDecoration: BoxDecoration(
-                        color: primaryTextColor,
-                        shape: BoxShape.circle,
-                      ),
-                      selectedDecoration: BoxDecoration(
-                        color: const Color(0xffE9C984),
-                        shape: BoxShape.circle,
-                      ),
-                      markerDecoration: BoxDecoration(
-                        color: Colors.grey,
-                        shape: BoxShape.circle,
+              child: Padding(
+                padding: const EdgeInsets.all(3.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showCalendar = false;
+                          });
+                        },
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: !_showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20.r),
+                          ),
+                          child: Text(
+                            "Requests",
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w500,
+                              color: !_showCalendar ? Colors.white : const Color(0xFFB28D28),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    headerStyle: HeaderStyle(
-                      formatButtonVisible: false,
-                      titleCentered: true,
-                      leftChevronIcon: _arrowContainer(Icons.chevron_left),
-                      rightChevronIcon: _arrowContainer(Icons.chevron_right),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showCalendar = true;
+                          });
+                        },
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20.r),
+                          ),
+                          child: Text(
+                            "Calendar",
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w500,
+                              color: _showCalendar ? Colors.white : const Color(0xFFB28D28),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 20.h),
-                  _legend(),
-                  SizedBox(height: 20.h),
-                ],
+                  ],
+                ),
               ),
             ),
+          ),
 
+          // Main Content - Either Calendar or Requests
+          Expanded(
+            child: _showCalendar ? _buildCalendarView() : _buildRequestsView(),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildCalendarView() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Calendar Widget
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14.r),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r, offset: Offset(0, 5))],
+            ),
+            child: Column(
+              children: [
+                TableCalendar(
+                  firstDay: DateTime.utc(2024, 1, 1),
+                  lastDay: DateTime.utc(2026, 12, 31),
+                  focusedDay: _focusedDay,
+                  calendarFormat: CalendarFormat.month,
+                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                  },
+                  calendarStyle: CalendarStyle(
+                    todayDecoration: BoxDecoration(
+                      color: primaryTextColor,
+                      shape: BoxShape.circle,
+                    ),
+                    selectedDecoration: BoxDecoration(
+                      color: const Color(0xffE9C984),
+                      shape: BoxShape.circle,
+                    ),
+                    markerDecoration: BoxDecoration(
+                      color: Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  headerStyle: HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                    leftChevronIcon: _arrowContainer(Icons.chevron_left),
+                    rightChevronIcon: _arrowContainer(Icons.chevron_right),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                _legend(),
+                SizedBox(height: 20.h),
+              ],
+            ),
+          ),
 
-            SizedBox(height: 20.h),
+          SizedBox(height: 20.h),
 
-            // Date heading
-            if (_selectedDay != null)
-              Text(
-                'Thu, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: primaryTextColor),
-              ),
+          // Date heading
+          if (_selectedDay != null)
+            Text(
+              'Thu, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: primaryTextColor),
+            ),
 
-            SizedBox(height: 10.h),
+          SizedBox(height: 10.h),
 
-            // Appointments list
-            Expanded(
-              child: ListView(
-                children: getAppointmentsForDay(_selectedDay ?? DateTime.now()).map((item) {
-                  return _appointmentCard(item);
-                }).toList(),
-              ),
-            )
-          ],
-        ),
+          // Appointments list
+          Expanded(
+            child: ListView(
+              children: getAppointmentsForDay(_selectedDay ?? DateTime.now()).map((item) {
+                return _appointmentCard(item);
+              }).toList(),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequestsView() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 10.h),
+          Text(
+            'Pending Requests',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp, color: primaryTextColor),
+          ),
+          SizedBox(height: 10.h),
+          Expanded(
+            child: ListView.builder(
+              itemCount: appointmentRequests.length,
+              itemBuilder: (context, index) {
+                final request = appointmentRequests[index];
+                return _appointmentRequestCard(
+                  name: request['name'],
+                  service: request['service'],
+                  day: request['day'],
+                  month: request['month'],
+                  year: request['year'],
+                  time: request['time'],
+                  isFemale: request['isFemale'],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -174,7 +318,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final bool isCompleted = item['status'] == "Completed";
     return GestureDetector(
       onTap: () {
-        Get.toNamed('/appointmentRequestPage');// Navigate to appointment details page
+        Get.toNamed('/appointmentRequestPage'); // Navigate to appointment details page
       },
       child: Container(
         margin: EdgeInsets.only(bottom: 10.h),
@@ -231,6 +375,132 @@ class _CalendarPageState extends State<CalendarPage> {
             )
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _appointmentRequestCard({
+    required String name,
+    required String service,
+    required String day,
+    required String month,
+    required String year,
+    required String time,
+    bool isFemale = false,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Get.toNamed('/appointmentRequestPage'); // Navigate to appointment details page
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: Row(
+          children: [
+            Container(
+              height: 0.1.sh,
+              width: 0.18.sw,
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(vertical: 10.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFB28D28),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(12.r),
+                  bottomLeft: Radius.circular(12.r),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(day,
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(month, style: TextStyle(fontSize: 14.sp, color: Colors.white)),
+                  Text(year, style: TextStyle(fontSize: 10.sp, color: Colors.white)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Container(
+                height: 0.1.sh,
+                padding: EdgeInsets.all(10.r),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(12.r),
+                    bottomRight: Radius.circular(12.r),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(2, 2)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          service,
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                        ),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time, size: 16.sp, color: Colors.black45),
+                            SizedBox(width: 4.w),
+                            Text(time, style: TextStyle(fontSize: 12.sp, color: Colors.black54)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              name,
+                              style: TextStyle(
+                                  fontSize: 13.sp, color: Colors.black87, fontWeight: FontWeight.w500),
+                            ),
+                            SizedBox(width: 4.w),
+                            Icon(
+                              isFemale ? Icons.female : Icons.male,
+                              color: isFemale ? Colors.purple : Colors.blue,
+                              size: 16.sp,
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            _statusButton(
+                                "Accept", const Color(0xFFCBF299), const Color(0xff33993A), const Color(0xFFCBF299)),
+                            SizedBox(width: 6.w),
+                            _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusButton(String text, Color bgColor, Color textColor, Color borderColor) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: borderColor),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: textColor, fontSize: 10.sp, fontWeight: FontWeight.w500),
       ),
     );
   }

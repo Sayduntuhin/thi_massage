@@ -3,8 +3,8 @@ import 'package:country_pickers/country.dart';
 import 'package:country_pickers/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../../../../themes/colors.dart';
-import '../../../widgets/app_logger.dart'; // Import AppLogger
+import '../../themes/colors.dart';
+import '../view/widgets/app_logger.dart';
 
 class PhoneNumberFieldController extends ChangeNotifier {
   Country _selectedCountry = CountryPickerUtils.getCountryByIsoCode('US');
@@ -55,11 +55,10 @@ class _PhoneNumberFieldState extends State<PhoneNumberField> {
     _internalController = widget.controller ?? TextEditingController();
     _controller = widget.phoneFieldController ?? PhoneNumberFieldController();
 
-    // Set initial country code if provided
     if (widget.initialCountryCode != null) {
       final cleanCode = widget.initialCountryCode!.replaceFirst('+', '');
       final country = _allCountries.firstWhere(
-            (c) => c.phoneCode == cleanCode,
+            (c) => c.phoneCode == cleanCode && (cleanCode == '880' ? c.isoCode == 'BD' : true),
         orElse: () {
           AppLogger.warning("Country code $cleanCode not found, defaulting to US (+1)");
           return CountryPickerUtils.getCountryByIsoCode('US');

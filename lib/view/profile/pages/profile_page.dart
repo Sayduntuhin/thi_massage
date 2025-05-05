@@ -1,20 +1,113 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/api/api_service.dart';
+import 'package:thi_massage/controller/user_controller.dart';
+import 'package:thi_massage/themes/colors.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
+import 'package:thi_massage/view/widgets/custom_snackbar.dart';
+import 'package:toastification/toastification.dart';
 
-import '../../../controller/user_controller.dart';
-import '../../../themes/colors.dart';
-
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String? fullName;
+  String? email;
+  String? imageUrl;
+  int? userId;
+  int? profileId;
+  bool isLoading = false;
+
+  final _storage = const FlutterSecureStorage();
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUserId();
+  }
+
+  Future<void> _initializeUserId() async {
+    final arguments = Get.arguments as Map<String, dynamic>?;
+    userId = arguments?['user_id'];
+    profileId = arguments?['profile_id'];
+
+    if (userId == null) {
+      final storedUserId = await _storage.read(key: 'user_id');
+      userId = int.tryParse(storedUserId ?? '');
+      AppLogger.debug("Fetched userId from storage: $userId");
+    }
+
+    AppLogger.debug("ProfilePage: userId=$userId, profileId=$profileId");
+
+    if (userId == null) {
+      CustomSnackBar.show(context, "User ID missing. Please log in again.", type: ToastificationType.error);
+      Get.offAllNamed('/login');
+      return;
+    }
+
+    fetchProfileData();
+  }
+
+  Future<void> fetchProfileData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final apiService = ApiService();
+      final response = await apiService.getClientProfile();
+      AppLogger.debug("Profile fetched: $response");
+
+      setState(() {
+        fullName = response['full_name'] ?? 'User';
+        email = response['email'] ?? '';
+        imageUrl = response['image'] != '/api/media/documents/default.jpg' ? response['image'] : null;
+        profileId = response['id'];
+        userId = response['user'];
+        AppLogger.debug("Image URL set: ${ApiService.baseUrl}$imageUrl");
+      });
+    } catch (e) {
+      String errorMessage = "Failed to fetch profile. Please try again.";
+      if (e is NotFoundException) {
+        errorMessage = "Profile not found. Please set up your profile.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+        Get.toNamed('/profileSetup', arguments: {
+          'user_id': userId,
+          'profile_id': profileId,
+          'source': 'profile_page',
+        });
+      } else if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      } else if (e is UnauthorizedException) {
+        errorMessage = "Authentication failed. Please log in again.";
+        Get.offAllNamed('/login');
+      }
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+      AppLogger.error("Fetch profile error: $e");
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final UserTypeController userTypeController = Get.find<UserTypeController>();
 
     return Scaffold(
-      body: Column(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
         children: [
           // Top profile header with curved bottom
           Container(
@@ -40,8 +133,6 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ),
 
-
-
                 // Profile content - centered
                 Center(
                   child: Column(
@@ -55,9 +146,17 @@ class ProfilePage extends StatelessWidget {
                         height: 100.w,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          image: const DecorationImage(
-                            image: AssetImage('assets/images/profilepic.png'),
+                          image: DecorationImage(
+                            image: imageUrl != null
+                                ? NetworkImage('${ApiService.baseUrl}$imageUrl')
+                                : const AssetImage('assets/images/empty_person.png') as ImageProvider,
                             fit: BoxFit.cover,
+                            onError: (exception, stackTrace) {
+                              AppLogger.error("Failed to load image: ${ApiService.baseUrl}$imageUrl, Error: $exception");
+                              setState(() {
+                                imageUrl = null; // Clear invalid URL
+                              });
+                            },
                           ),
                         ),
                       ),
@@ -69,7 +168,7 @@ class ProfilePage extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            "Mike Milian",
+                            fullName ?? 'User',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 22.sp,
@@ -78,10 +177,14 @@ class ProfilePage extends StatelessWidget {
                           ),
                           SizedBox(width: 8.w),
                           InkWell(
-                              onTap: (){
-                                Get.toNamed('/editProfile');
-                              },
-                              child: SvgPicture.asset('assets/svg/edit.svg'))
+                            onTap: () {
+                              Get.toNamed('/editProfile', arguments: {
+                                'user_id': userId,
+                                'profile_id': profileId,
+                              });
+                            },
+                            child: SvgPicture.asset('assets/svg/edit.svg'),
+                          ),
                         ],
                       ),
 
@@ -89,7 +192,7 @@ class ProfilePage extends StatelessWidget {
 
                       // Email
                       Text(
-                        "mike@gmail.com",
+                        email ?? '',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 14.sp,
@@ -110,35 +213,33 @@ class ProfilePage extends StatelessWidget {
             child: Column(
               children: [
                 _buildMenuItem(
-                  onTap: (){
+                  onTap: () {
                     Get.toNamed('/favoriteTherapist');
                   },
                   icon: Icons.favorite_border,
                   title: "Favorite Therapist",
                   iconColor: primaryTextColor,
                 ),
-
                 _buildMenuItem(
-                  onTap: (){
+                  onTap: () {
                     Get.toNamed('/inviteFriendPage');
                   },
                   icon: Icons.people_outline,
                   title: "Invite Friends",
-                  iconColor:primaryTextColor,
+                  iconColor: primaryTextColor,
                 ),
-
                 _buildMenuItem(
                   icon: Icons.support_agent_outlined,
                   title: "Support and FAQs",
                   iconColor: primaryTextColor,
-                  onTap: (){
+                  onTap: () {
                     Get.toNamed('/supportPage');
-
-                  }
+                  },
                 ),
-
                 _buildMenuItem(
-                  onTap: (){Get.toNamed('/changePassword');},
+                  onTap: () {
+                    Get.toNamed('/changePassword');
+                  },
                   icon: Icons.lock_outline,
                   title: "Change Password",
                   iconColor: primaryTextColor,
@@ -167,8 +268,10 @@ class ProfilePage extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () {
-                  // Handle logout
+                onTap: () async {
+                  await _storage.delete(key: 'user_id');
+                  await _storage.delete(key: 'access_token');
+                  Get.offAllNamed('/login');
                 },
                 borderRadius: BorderRadius.circular(12.r),
                 child: Padding(
@@ -209,7 +312,7 @@ class ProfilePage extends StatelessWidget {
   }) {
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
       ),
       child: Material(
@@ -260,12 +363,7 @@ class CurveShapePainter extends CustomPainter {
     final path = Path();
     path.moveTo(0, 0);
     path.lineTo(0, size.height * 0.7);
-    path.quadraticBezierTo(
-        size.width * 0.5,
-        size.height * 1.2,
-        size.width,
-        size.height * 0.6
-    );
+    path.quadraticBezierTo(size.width * 0.5, size.height * 1.2, size.width, size.height * 0.6);
     path.lineTo(size.width, 0);
     path.close();
 

@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:logger/logger.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:toastification/toastification.dart';
 import '../../../../api/api_service.dart';
 import '../../../../controller/user_controller.dart';
@@ -25,6 +27,7 @@ class _LoginPageState extends State<LoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool rememberMe = false;
+  var logger = Logger();
 
   @override
   void dispose() {
@@ -55,7 +58,6 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final apiService = ApiService();
       final userTypeController = Get.find<UserTypeController>();
-      final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
       final response = await apiService.login({
         "email": emailController.text.trim(),
@@ -65,7 +67,7 @@ class _LoginPageState extends State<LoginPage> {
       LoadingManager.hideLoading();
 
       // Set user role
-      final role = response['user_profile']?['role'] ?? 'client';
+      final role = response['profile_data']?['role'] ?? 'client'; // Updated to profile_data
       userTypeController.setUserType(role == 'therapist');
 
       CustomSnackBar.show(context, "Login successful!",
@@ -89,6 +91,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> handleGoogleSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
+    AppLogger.debug('Google Sign-In: isTherapist argument = $isTherapist');
 
     LoadingManager.showLoading();
 
@@ -122,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      debugPrint("Firebase User: ${firebaseUser.email}, ${firebaseUser.displayName}");
+      logger.d("Firebase User: ${firebaseUser.email}, ${firebaseUser.displayName}");
 
       // Call backend API
       final apiService = ApiService();
@@ -135,16 +138,21 @@ class _LoginPageState extends State<LoginPage> {
         "auth_provider": "google",
       });
 
+          AppLogger.debug('Backend response: $response');
+          AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
+
       LoadingManager.hideLoading();
 
-      // Use the role from the backend response
-      final role = response['user_profile']?['role'] ?? 'client';
+      // Use the role from the backend response, fallback to isTherapist if role is missing
+      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
       final isTherapistFromResponse = role == 'therapist';
+          AppLogger.debug('Setting userType: $isTherapistFromResponse');
       userTypeController.setUserType(isTherapistFromResponse);
 
       CustomSnackBar.show(context, "Google Sign-In successful!",
           type: ToastificationType.success);
 
+          AppLogger.debug('Navigating to /homePage with isTherapist: $isTherapistFromResponse');
       Get.offAllNamed('/homePage',
           arguments: {'isTherapist': isTherapistFromResponse});
     } catch (e) {
@@ -163,7 +171,7 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         errorMessage = "Failed to sign in with Google: $e";
       }
-      debugPrint("Google Sign-In Error: $e");
+          AppLogger.debug("Google Sign-In Error: $e");
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
@@ -211,7 +219,7 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      debugPrint("Facebook User: $email, $fullName");
+          AppLogger.debug("Facebook User: $email, $fullName");
 
       // Call backend API
       final apiService = ApiService();
@@ -224,16 +232,20 @@ class _LoginPageState extends State<LoginPage> {
         "auth_provider": "facebook",
       });
 
+          AppLogger.debug('Backend response: $response');
+          AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
+
       LoadingManager.hideLoading();
 
-      // Use the role from the backend response
-      final role = response['user_profile']?['role'] ?? 'client';
+      // Use the role from the backend response, fallback to isTherapist if role is missing
+      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
       final isTherapistFromResponse = role == 'therapist';
       userTypeController.setUserType(isTherapistFromResponse);
 
       CustomSnackBar.show(context, "Facebook Sign-In successful!",
           type: ToastificationType.success);
 
+          AppLogger.debug('Navigating to /homePage with isTherapist: $isTherapistFromResponse');
       Get.offAllNamed('/homePage',
           arguments: {'isTherapist': isTherapistFromResponse});
     } catch (e) {
@@ -247,7 +259,7 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         errorMessage = "Failed to sign in with Facebook: $e";
       }
-      debugPrint("Facebook Sign-In Error: $e");
+          AppLogger.debug("Facebook Sign-In Error: $e");
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
@@ -368,7 +380,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   SizedBox(width: 20.w),
                   InkWell(
-                    onTap: () => debugPrint("Tap Apple"),
+                    onTap: () =>     AppLogger.debug("Tap Apple"),
                     child: Image.asset('assets/images/apple.png', width: 50.w),
                   ),
                 ],

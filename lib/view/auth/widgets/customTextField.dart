@@ -6,9 +6,10 @@ class CustomTextField extends StatelessWidget {
   final String hintText;
   final IconData icon;
   final bool isPassword;
-  final TextEditingController? controller; // Added for input control
-  final TextInputType? keyboardType; // Added for input type (e.g., email, number)
-  final ValueChanged<String>? onChanged; // Optional callback for real-time input changes
+  final TextEditingController? controller;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
+  final bool readOnly; // Added for read-only mode
 
   const CustomTextField({
     super.key,
@@ -18,22 +19,23 @@ class CustomTextField extends StatelessWidget {
     this.controller,
     this.keyboardType,
     this.onChanged,
+    this.readOnly = false, // Default to false (editable)
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller, // Assign controller
-      obscureText: isPassword, // Toggle for password visibility
-      keyboardType: keyboardType, // Set keyboard type (e.g., email, number)
-      onChanged: onChanged, // Handle real-time input changes
-      autofocus: true, // Kept from original
+      controller: controller,
+      obscureText: isPassword,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+      readOnly: readOnly, // Apply read-only property
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.black),
         hintText: hintText,
         hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
         filled: true,
-        fillColor: textFieldColor,
+        fillColor: readOnly ? Colors.grey.shade200 : textFieldColor, // Optional: Change background for read-only
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(25.r),
           borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w),

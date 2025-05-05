@@ -3,17 +3,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:thi_massage/themes/colors.dart';
-
-// MinimalLoadingScreen (moved here for reusability)
 class MinimalLoadingScreen extends StatelessWidget {
   const MinimalLoadingScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return  Scaffold(
       backgroundColor: Colors.transparent,
       body: Center(
-        child: LoadingAnimationWidget.staggeredDotsWave(
+        child: LoadingAnimationWidget.discreteCircle(
           color: primaryColor,
           size: 0.12.sw,
         ),
@@ -21,7 +18,6 @@ class MinimalLoadingScreen extends StatelessWidget {
     );
   }
 }
-
 class LoadingManager {
   static bool _isLoading = false;
 

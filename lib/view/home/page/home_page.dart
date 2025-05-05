@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
-import 'package:thi_massage/view/booking/pages/booking_page.dart';
+import 'package:thi_massage/view/booking/pages/client_booking_page.dart';
 import 'package:thi_massage/view/booking/pages/therapist_booking_page.dart';
 import 'package:thi_massage/view/chat/pages/chat_list_page.dart';
 import 'package:thi_massage/view/home/page/therapist_home_page.dart';
 import 'package:thi_massage/view/profile/pages/profile_page.dart';
 import 'package:thi_massage/view/wallet/pages/earning_page.dart';
+import '../../profile/pages/therepist_profile_page.dart';
 import '../../wallet/pages/wallet_page.dart';
 import 'home_content.dart';
 import '../../../controller/user_controller.dart';
@@ -28,6 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _controller = NotchBottomBarController(index: _selectedIndex);
+    // Log initial state
+    final userTypeController = Get.find<UserTypeController>();
+    final isTherapistArg = Get.arguments?['isTherapist'] ?? false;
+    debugPrint('HomeScreen init: userTypeController.isTherapist = ${userTypeController.isTherapist.value}');
+    debugPrint('HomeScreen init: Get.arguments[isTherapist] = $isTherapistArg');
   }
 
   @override
@@ -38,17 +44,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Initialize the UserTypeController if it doesn't exist
-    final UserTypeController userTypeController = Get.put(UserTypeController(), permanent: true);
+    // Get controller and arguments
+    final UserTypeController userTypeController = Get.find<UserTypeController>();
+    final bool isTherapistArg = Get.arguments?['isTherapist'] ?? false;
 
     return Scaffold(
       body: Obx(() {
+        // Use userTypeController or fallback to Get.arguments
+        final isTherapist = userTypeController.isTherapist.value || isTherapistArg;
+        debugPrint('HomeScreen build: isTherapist = $isTherapist');
+
         final List<Widget> _pages = [
-          userTypeController.isTherapist.value ? EarningsPage() : WalletScreen(),
+          isTherapist ? EarningsPage() : WalletScreen(),
           ChatListScreen(),
-          userTypeController.isTherapist.value ? const TherapistHomePage() : HomeContent(),
-          userTypeController.isTherapist.value ? CalendarPage() : BookingsPage(),
-          ProfilePage(),
+          isTherapist ? const TherapistHomePage() : HomeContent(),
+          isTherapist ? CalendarPage() : BookingsPage(),
+          isTherapist ? TherapistEditPage() : ProfilePage(),
         ];
         return _pages[_selectedIndex];
       }),

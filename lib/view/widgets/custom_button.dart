@@ -46,6 +46,10 @@ class ThaiMassageButton extends StatelessWidget {
           foregroundColor: textColor ?? defaultTextColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius.r),
+            side: BorderSide(
+              color: borderColor ?? defaultBorderColor,
+              width: 1.w,
+            ),
           ),
           elevation: 0,
           minimumSize: Size(width ?? double.infinity, height.h),

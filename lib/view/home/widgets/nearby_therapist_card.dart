@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -45,15 +47,11 @@ class TherapistCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    height: 10.h,
-                  ),
+                  SizedBox(height: 10.h),
                   // Rating
                   Row(
                     children: [
-                      SizedBox(
-                        width: 15.w,
-                      ),
+                      SizedBox(width: 15.w),
                       Icon(Icons.star, size: 16.sp, color: Colors.black),
                       SizedBox(width: 4.w),
                       Text(
@@ -68,11 +66,15 @@ class TherapistCard extends StatelessWidget {
                   // Name
                   Padding(
                     padding: EdgeInsets.only(left: 15.w),
-                    child: SizedBox(
-                      width: 0.2.sw,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: 0.25.sw,
+                        minWidth: min(0.2.sw, 0.25.sw), // Ensure minWidth <= maxWidth
+                      ),
                       child: Text(
                         name,
                         maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 20.sp,
                           fontWeight: FontWeight.w600,
@@ -82,11 +84,13 @@ class TherapistCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   // Therapist or Bookings
                   Container(
                     height: 0.065.sh,
-                    width: 0.3.sw,
+                    constraints: BoxConstraints(
+                      maxWidth: 0.35.sw,
+                      minWidth: min(0.3.sw, 0.35.sw), // Ensure minWidth <= maxWidth
+                    ),
                     margin: EdgeInsets.only(top: 6.h),
                     padding: EdgeInsets.symmetric(horizontal: 8.w),
                     decoration: BoxDecoration(
@@ -97,12 +101,12 @@ class TherapistCard extends StatelessWidget {
                       ),
                     ),
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            SizedBox(
-                              width: 8.w,
-                            ),
+                            SizedBox(width: 8.w),
                             Text(
                               bookings,
                               style: TextStyle(
@@ -123,6 +127,7 @@ class TherapistCard extends StatelessWidget {
                                 ),
                               ),
                             ),
+                            Spacer(), // Ensures content stays left-aligned
                           ],
                         ),
                         Text(

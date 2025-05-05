@@ -1,19 +1,20 @@
-// lib/features/auth/presentation/pages/sign_up_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:toastification/toastification.dart';
 import '../../../../api/api_service.dart';
+import '../../../../controller/phone_number_controller.dart';
 import '../../../../controller/user_controller.dart';
 import '../../../../themes/colors.dart';
+import '../../../widgets/app_logger.dart';
 import '../../../widgets/custom_appbar.dart';
 import '../../../widgets/custom_button.dart';
 import '../../../widgets/custom_snackbar.dart';
 import '../../../widgets/loading_indicator.dart';
 import '../../widgets/customTextField.dart';
-import '../widgets/phone_code_picker.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -27,6 +28,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
   final passwordController = TextEditingController();
+  final phoneFieldController = PhoneNumberFieldController();
 
   @override
   void dispose() {
@@ -34,6 +36,7 @@ class _SignUpPageState extends State<SignUpPage> {
     emailController.dispose();
     phoneController.dispose();
     passwordController.dispose();
+    phoneFieldController.dispose();
     super.dispose();
   }
 
@@ -51,7 +54,7 @@ class _SignUpPageState extends State<SignUpPage> {
       CustomSnackBar.show(context, "Please enter a phone number", type: ToastificationType.error);
       return false;
     }
-    if (!RegExp(r'^[\+]?[0-9]{7,15}$').hasMatch(phone)) {
+    if (!RegExp(r'^[0-9]{7,15}$').hasMatch(phone)) {
       CustomSnackBar.show(context, "Please enter a valid phone number (7-15 digits)", type: ToastificationType.error);
       return false;
     }
@@ -63,41 +66,54 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Future<void> handleSignUp() async {
-    if (!validateInputs()) return;
-
-    debugPrint("Phone number entered: ${phoneController.text.trim()}");
+    final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
     LoadingManager.showLoading();
 
     try {
       final apiService = ApiService();
       final userTypeController = Get.find<UserTypeController>();
-      final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
       final response = await apiService.signUp({
-        "email": emailController.text.trim(),
         "full_name": nameController.text.trim(),
-        "phone_number": phoneController.text.trim(),
+        "email": emailController.text.trim(),
+        "phone_number": phoneFieldController.getFullPhoneNumber(phoneController.text),
         "password": passwordController.text.trim(),
         "role": isTherapist ? "therapist" : "client",
       });
 
+      final role = response['profile_data']?['role'] ?? 'client';
+      final isTherapistFromResponse = role == 'therapist';
+      final userId = response['profile_data']?['user'];
+      AppLogger.debug(" Sign-Up User ID: $userId");
+      final profileId = response['profile_data']?['id'];
+      if (userId == null || profileId == null) {
+        AppLogger.error("Missing user or id in signUp response: $response");
+        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
+        return;
+      }
+
+      userTypeController.setUserType(isTherapistFromResponse);
+
       LoadingManager.hideLoading();
 
-      userTypeController.setUserType(isTherapist);
-
-      CustomSnackBar.show(context, "Signup successful! Please verify your email.", type: ToastificationType.success);
+      CustomSnackBar.show(context, "Sign-up successful! Please verify your email.", type: ToastificationType.success);
 
       Get.toNamed(
         '/otpVerification',
         arguments: {
           "source": "signup",
           "email": emailController.text.trim(),
+          "full_name": nameController.text.trim(),
+          "phone_number": phoneController.text.trim(),
+          "country_code": phoneFieldController.getCountryCode(),
+          "isTherapist": isTherapistFromResponse,
+          "user_id": userId, // Pass user as user_id
+          "profile_id": profileId, // Pass id as profile_id
         },
       );
     } catch (e) {
       LoadingManager.hideLoading();
-
       String errorMessage = "Failed to sign up. Please try again.";
       if (e is BadRequestException) {
         errorMessage = e.message;
@@ -105,83 +121,179 @@ class _SignUpPageState extends State<SignUpPage> {
         errorMessage = "No internet connection.";
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+      AppLogger.error("Sign-up error: $e");
     }
   }
-
   Future<void> handleGoogleSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
     LoadingManager.showLoading();
 
     try {
-      // Sign in with Google via Firebase
+      AppLogger.debug("Initiating Google Sign-In...");
+
+      // Sign in with Google
       final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
       if (googleUser == null) {
         LoadingManager.hideLoading();
         CustomSnackBar.show(context, "Google Sign-In canceled", type: ToastificationType.warning);
         return;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+      AppLogger.debug("Google User: ${googleUser.email}, ${googleUser.displayName}");
 
-      // Sign in to Firebase
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final User? firebaseUser = userCredential.user;
-
-      if (firebaseUser == null) {
-        LoadingManager.hideLoading();
-        CustomSnackBar.show(context, "Failed to retrieve user data", type: ToastificationType.error);
-        return;
-      }
-
-      debugPrint("Firebase User: ${firebaseUser.email}, ${firebaseUser.displayName}");
-
-      // Call backend API
       final apiService = ApiService();
       final userTypeController = Get.find<UserTypeController>();
 
       final response = await apiService.socialSignUpSignIn({
-        "email": firebaseUser.email ?? "",
-        "full_name": firebaseUser.displayName ?? "Google User",
+        "email": googleUser.email,
+        "full_name": googleUser.displayName ?? "Google User",
         "role": isTherapist ? "therapist" : "client",
         "auth_provider": "google",
       });
 
       LoadingManager.hideLoading();
 
-      // Use the role from the backend response
-      final role = response['user_profile']?['role'] ?? 'client';
+      // Extract role, user_id, and profile_id from response
+      final role = response['profile_data']?['role'] ?? 'client';
       final isTherapistFromResponse = role == 'therapist';
+      final userId = response['profile_data']?['user'];
+      final profileId = response['profile_data']?['id'];
+
+      if (userId == null || profileId == null) {
+        AppLogger.error("Missing user or id in socialSignUpSignIn response: $response");
+        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
+        return;
+      }
+
+      AppLogger.debug("Google Sign-In User ID: $userId, Profile ID: $profileId");
+
       userTypeController.setUserType(isTherapistFromResponse);
 
       CustomSnackBar.show(context, "Google Sign-In successful!", type: ToastificationType.success);
 
       Get.toNamed(
         '/profileSetup',
-        arguments: {'isTherapist': isTherapistFromResponse},
+        arguments: {
+          'isTherapist': isTherapistFromResponse,
+          'email': googleUser.email,
+          'full_name': googleUser.displayName ?? "Google User",
+          'source': 'social',
+          'user_id': userId, // Pass profile_data.user as user_id
+          'profile_id': profileId, // Pass profile_data.id as profile_id
+        },
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       LoadingManager.hideLoading();
 
-      String errorMessage;
-      if (e is FirebaseAuthException) {
-        errorMessage = "Firebase error: ${e.message}";
-        if (e.code == 'account-exists-with-different-credential') {
-          errorMessage = "This email is already registered with another provider.";
-        }
-      } else if (e is BadRequestException) {
-        errorMessage = e.message; // Displays role conflict error
+      String errorMessage = "Failed to sign in with Google";
+      if (e is BadRequestException) {
+        errorMessage = e.message;
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
-      } else {
-        errorMessage = "Failed to sign in with Google: $e";
       }
-      debugPrint("Google Sign-In Error: $e");
+      AppLogger.error("Google Sign-In Error: $e", e, stackTrace);
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+    }
+  }
+  Future<void> handleFacebookSignIn() async {
+    final isTherapist = Get.arguments?['isTherapist'] ?? false;
+
+    LoadingManager.showLoading();
+
+    try {
+      AppLogger.debug("Initiating Facebook Sign-In...");
+      final LoginResult result = await FacebookAuth.instance.login(
+        permissions: ['email', 'public_profile'],
+      );
+
+      AppLogger.debug("Facebook Login Result: ${result.status}, ${result.message}, Token: ${result.accessToken?.tokenString}");
+
+      if (result.status != LoginStatus.success) {
+        LoadingManager.hideLoading();
+        String message;
+        switch (result.status) {
+          case LoginStatus.cancelled:
+            message = "Facebook Sign-In canceled";
+            break;
+          case LoginStatus.failed:
+            message = "Facebook Sign-In failed: ${result.message}";
+            break;
+          default:
+            message = "Unknown error during Facebook Sign-In";
+        }
+        CustomSnackBar.show(context, message, type: ToastificationType.warning);
+        return;
+      }
+
+      AppLogger.debug("Fetching Facebook user data...");
+      final userData = await FacebookAuth.instance.getUserData(
+        fields: "email,name",
+      );
+
+      AppLogger.debug("Facebook User Data: $userData");
+
+      final String? email = userData['email'];
+      final String? fullName = userData['name'];
+
+      if (email == null || fullName == null) {
+        LoadingManager.hideLoading();
+        CustomSnackBar.show(context, "Failed to retrieve user data", type: ToastificationType.error);
+        return;
+      }
+
+      AppLogger.debug("Facebook User: $email, $fullName");
+
+      final apiService = ApiService();
+      final userTypeController = Get.find<UserTypeController>();
+
+      final response = await apiService.socialSignUpSignIn({
+        "email": email,
+        "full_name": fullName,
+        "role": isTherapist ? "therapist" : "client",
+        "auth_provider": "facebook",
+      });
+
+      LoadingManager.hideLoading();
+
+      final role = response['profile_data']?['role'] ?? 'client';
+      final isTherapistFromResponse = role == 'therapist';
+      final userId = response['profile_data']?['user']; // Extract user
+      final profileId = response['profile_data']?['id']; // Extract id
+
+      if (userId == null || profileId == null) {
+        AppLogger.error("Missing user or id in socialSignUpSignIn response: $response");
+        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
+        return;
+      }
+
+      userTypeController.setUserType(isTherapistFromResponse);
+
+      CustomSnackBar.show(context, "Facebook Sign-In successful!", type: ToastificationType.success);
+
+      Get.toNamed(
+        '/profileSetup',
+        arguments: {
+          'isTherapist': isTherapistFromResponse,
+          'email': email,
+          'full_name': fullName,
+          'source': 'social',
+          'user_id': userId, // Pass user as user_id
+          'profile_id': profileId, // Pass id as profile_id
+        },
+      );
+    } catch (e, stackTrace) {
+      LoadingManager.hideLoading();
+
+      String errorMessage = "Failed to sign in with Facebook";
+      if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      }
+      AppLogger.error("Facebook Sign-In Error: $e", e, stackTrace);
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
@@ -233,6 +345,7 @@ class _SignUpPageState extends State<SignUpPage> {
               SizedBox(height: 15.h),
               PhoneNumberField(
                 controller: phoneController,
+                phoneFieldController: phoneFieldController,
               ),
               SizedBox(height: 15.h),
               CustomTextField(
@@ -278,7 +391,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   InkWell(
-                    onTap: () => debugPrint("Tap Facebook"),
+                    onTap: handleFacebookSignIn,
                     child: Image.asset('assets/images/facebook.png', width: 50.w),
                   ),
                   SizedBox(width: 20.w),
@@ -288,7 +401,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   SizedBox(width: 20.w),
                   InkWell(
-                    onTap: () => debugPrint("Tap Apple"),
+                    onTap: () => AppLogger.debug("Tap Apple"),
                     child: Image.asset('assets/images/apple.png', width: 50.w),
                   ),
                 ],
