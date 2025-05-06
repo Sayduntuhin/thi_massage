@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -42,7 +43,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
   bool validateInputs() {
     if (nameController.text.trim().isEmpty) {
-      CustomSnackBar.show(context, "Please enter your name", type: ToastificationType.error);
+      CustomSnackBar.show(context, "Please enter your full name", type: ToastificationType.error);
       return false;
     }
     if (!GetUtils.isEmail(emailController.text.trim())) {
@@ -66,6 +67,8 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Future<void> handleSignUp() async {
+    if (!validateInputs()) return;
+
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
     LoadingManager.showLoading();
@@ -85,7 +88,7 @@ class _SignUpPageState extends State<SignUpPage> {
       final role = response['profile_data']?['role'] ?? 'client';
       final isTherapistFromResponse = role == 'therapist';
       final userId = response['profile_data']?['user'];
-      AppLogger.debug(" Sign-Up User ID: $userId");
+      AppLogger.debug("Sign-Up User ID: $userId");
       final profileId = response['profile_data']?['id'];
       if (userId == null || profileId == null) {
         AppLogger.error("Missing user or id in signUp response: $response");
@@ -108,8 +111,8 @@ class _SignUpPageState extends State<SignUpPage> {
           "phone_number": phoneController.text.trim(),
           "country_code": phoneFieldController.getCountryCode(),
           "isTherapist": isTherapistFromResponse,
-          "user_id": userId, // Pass user as user_id
-          "profile_id": profileId, // Pass id as profile_id
+          "user_id": userId,
+          "profile_id": profileId,
         },
       );
     } catch (e) {
@@ -124,40 +127,71 @@ class _SignUpPageState extends State<SignUpPage> {
       AppLogger.error("Sign-up error: $e");
     }
   }
+
   Future<void> handleGoogleSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
+    AppLogger.debug('Google Sign-In: isTherapist argument = $isTherapist');
 
     LoadingManager.showLoading();
 
     try {
-      AppLogger.debug("Initiating Google Sign-In...");
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+        clientId: '1048463216573-xyz123.apps.googleusercontent.com',
+        serverClientId: '1048463216573-68qmf5ml28m1f8uol09cstfno4jb33gk.apps.googleusercontent.com',
+      );
 
-      // Sign in with Google
-      final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+      await googleSignIn.signOut();
+      await FirebaseAuth.instance.signOut();
+      AppLogger.debug('Google Sign-In: Signed out previous sessions');
+
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-
       if (googleUser == null) {
+        AppLogger.debug("Google Sign-In: User canceled sign-in");
         LoadingManager.hideLoading();
         CustomSnackBar.show(context, "Google Sign-In canceled", type: ToastificationType.warning);
         return;
       }
 
-      AppLogger.debug("Google User: ${googleUser.email}, ${googleUser.displayName}");
+      AppLogger.debug("Google Sign-In: User selected ${googleUser.email}");
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      if (googleAuth.idToken == null) {
+        throw Exception("Google Sign-In: No ID token received");
+      }
+
+      AppLogger.debug("Google Sign-In: ID token received");
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final User? firebaseUser = userCredential.user;
+
+      if (firebaseUser == null) {
+        throw Exception("Google Sign-In: Failed to retrieve Firebase user data");
+      }
+
+      AppLogger.debug("Firebase User: ${firebaseUser.email}, ${firebaseUser.displayName}");
 
       final apiService = ApiService();
       final userTypeController = Get.find<UserTypeController>();
 
       final response = await apiService.socialSignUpSignIn({
-        "email": googleUser.email,
-        "full_name": googleUser.displayName ?? "Google User",
+        "email": firebaseUser.email ?? "",
+        "full_name": firebaseUser.displayName ?? "Google User",
         "role": isTherapist ? "therapist" : "client",
         "auth_provider": "google",
       });
 
+      AppLogger.debug('Backend response: $response');
+      AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
+
       LoadingManager.hideLoading();
 
-      // Extract role, user_id, and profile_id from response
-      final role = response['profile_data']?['role'] ?? 'client';
+      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
       final isTherapistFromResponse = role == 'therapist';
       final userId = response['profile_data']?['user'];
       final profileId = response['profile_data']?['id'];
@@ -168,8 +202,6 @@ class _SignUpPageState extends State<SignUpPage> {
         return;
       }
 
-      AppLogger.debug("Google Sign-In User ID: $userId, Profile ID: $profileId");
-
       userTypeController.setUserType(isTherapistFromResponse);
 
       CustomSnackBar.show(context, "Google Sign-In successful!", type: ToastificationType.success);
@@ -178,26 +210,44 @@ class _SignUpPageState extends State<SignUpPage> {
         '/profileSetup',
         arguments: {
           'isTherapist': isTherapistFromResponse,
-          'email': googleUser.email,
-          'full_name': googleUser.displayName ?? "Google User",
+          'email': firebaseUser.email ?? "",
+          'full_name': firebaseUser.displayName ?? "Google User",
           'source': 'social',
-          'user_id': userId, // Pass profile_data.user as user_id
-          'profile_id': profileId, // Pass profile_data.id as profile_id
+          'user_id': userId,
+          'profile_id': profileId,
         },
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       LoadingManager.hideLoading();
 
-      String errorMessage = "Failed to sign in with Google";
-      if (e is BadRequestException) {
+      String errorMessage = "Failed to sign in with Google. Please try again.";
+      if (e is PlatformException) {
+        AppLogger.error("Google Sign-In PlatformException: Code=${e.code}, Message=${e.message}, Details=${e.details}");
+        if (e.code == 'sign_in_failed') {
+          errorMessage = "Google Sign-In failed. Please check your Google account or app configuration.";
+          if (e.message?.contains('ApiException: 10') == true) {
+            errorMessage = "Configuration error: Verify OAuth client ID, SHA-1, and package name in Firebase Console.";
+          }
+        } else if (e.code == 'network_error') {
+          errorMessage = "Network error. Please check your internet connection.";
+        }
+      } else if (e is FirebaseAuthException) {
+        AppLogger.error("FirebaseAuthException: Code=${e.code}, Message=${e.message}");
+        errorMessage = "Firebase error: ${e.message}";
+        if (e.code == 'account-exists-with-different-credential') {
+          errorMessage = "This email is already registered with another provider.";
+        }
+      } else if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+      } else {
+        AppLogger.error("Google Sign-In Unexpected Error: $e");
       }
-      AppLogger.error("Google Sign-In Error: $e", e, stackTrace);
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
+
   Future<void> handleFacebookSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
@@ -260,8 +310,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
       final role = response['profile_data']?['role'] ?? 'client';
       final isTherapistFromResponse = role == 'therapist';
-      final userId = response['profile_data']?['user']; // Extract user
-      final profileId = response['profile_data']?['id']; // Extract id
+      final userId = response['profile_data']?['user'];
+      final profileId = response['profile_data']?['id'];
 
       if (userId == null || profileId == null) {
         AppLogger.error("Missing user or id in socialSignUpSignIn response: $response");
@@ -280,8 +330,8 @@ class _SignUpPageState extends State<SignUpPage> {
           'email': email,
           'full_name': fullName,
           'source': 'social',
-          'user_id': userId, // Pass user as user_id
-          'profile_id': profileId, // Pass id as profile_id
+          'user_id': userId,
+          'profile_id': profileId,
         },
       );
     } catch (e, stackTrace) {
@@ -297,6 +347,7 @@ class _SignUpPageState extends State<SignUpPage> {
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
@@ -331,7 +382,7 @@ class _SignUpPageState extends State<SignUpPage> {
               ),
               SizedBox(height: 20.h),
               CustomTextField(
-                hintText: "Enter your name",
+                hintText: "Enter your full name",
                 icon: Icons.person_outline,
                 controller: nameController,
               ),
@@ -367,7 +418,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   children: [
                     SizedBox(
                       width: 0.25.sw,
-                      child: Divider(thickness: 1.w, color: Color(0xffE8ECF4)),
+                      child: Divider(thickness: 1.w, color: const Color(0xffE8ECF4)),
                     ),
                     Padding(
                       padding: const EdgeInsets.all(8.0),
@@ -375,13 +426,13 @@ class _SignUpPageState extends State<SignUpPage> {
                         "Or Sign up with",
                         style: TextStyle(
                           fontSize: 14.sp,
-                          color: Color(0xff6A707C),
+                          color: const Color(0xff6A707C),
                         ),
                       ),
                     ),
                     SizedBox(
                       width: 0.25.sw,
-                      child: Divider(thickness: 1.w, color: Color(0xffE8ECF4)),
+                      child: Divider(thickness: 1.w, color: const Color(0xffE8ECF4)),
                     ),
                   ],
                 ),

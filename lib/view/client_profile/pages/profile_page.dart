@@ -31,6 +31,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _initializeUserId();
+    fetchProfileData();
   }
 
   Future<void> _initializeUserId() async {
@@ -74,9 +75,9 @@ class _ProfilePageState extends State<ProfilePage> {
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$imageUrl");
       });
     } catch (e) {
-      String errorMessage = "Failed to fetch profile. Please try again.";
+      String errorMessage = "Something went wrong. Please try again.";
       if (e is NotFoundException) {
-        errorMessage = "Profile not found. Please set up your profile.";
+        errorMessage = "Profile not found. Please set up your Profile.";
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         Get.toNamed('/profileSetup', arguments: {
           'user_id': userId,
@@ -92,7 +93,7 @@ class _ProfilePageState extends State<ProfilePage> {
         Get.offAllNamed('/login');
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-      AppLogger.error("Fetch profile error: $e");
+      AppLogger.error("Fetch Profile error: $e");
     } finally {
       setState(() {
         isLoading = false;

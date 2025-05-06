@@ -17,6 +17,7 @@ import '../../widgets/loading_indicator.dart';
 import '../../widgets/payment_options_sheet.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:toastification/toastification.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class AppointmentScreen extends StatefulWidget {
   const AppointmentScreen({super.key});
@@ -26,7 +27,7 @@ class AppointmentScreen extends StatefulWidget {
 }
 
 class _AppointmentScreenState extends State<AppointmentScreen> {
-  String _selectedMessageType = 'Thai Massage';
+  String _selectedMessageType = 'Swedish Massage';
   bool _isReturningCustomer = false;
   bool _hasOwnMassageTable = false;
   RangeValues _ageRange = const RangeValues(18, 40);
@@ -42,12 +43,46 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   String? _parkingSelection;
   final TextEditingController _numberOfFloorsController = TextEditingController();
   final _storage = const FlutterSecureStorage();
+  final ApiService apiService = ApiService();
+  List<Map<String, dynamic>> messageTypes = [];
+  bool isLoading = true;
+  String? errorMessage;
 
-  final List<Map<String, String>> messageTypes = [
-    {"title": "Thai Massage", "image": "assets/images/thi_massage.png"},
-    {"title": "Swedish Massage", "image": "assets/images/swedish.png"},
-    {"title": "Deep Tissue", "image": "assets/images/deep.png"},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    fetchMassageTypes();
+    final String? massageType = Get.arguments?['massageType'];
+    if (massageType != null) {
+      _selectedMessageType = massageType;
+    }
+  }
+
+  Future<void> fetchMassageTypes() async {
+    try {
+      final massageTypes = await apiService.getMassageTypes();
+      setState(() {
+        messageTypes = massageTypes
+            .where((type) => type['is_active'] == true)
+            .map((type) => {
+          'title': type['name'] as String,
+          'image': type['image'].startsWith('/media')
+              ? '${ApiService.baseUrl}${type['image']}'
+              : type['image'] as String,
+        })
+            .toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString().contains('NetworkException')
+            ? 'No internet connection. Please check your network.'
+            : 'Failed to load massage types: $e';
+        isLoading = false;
+      });
+    }
+  }
+
   void _showTherapistDialog() {
     showDialog(
       context: context,
@@ -64,7 +99,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               SizedBox(
                 height: 300.h,
                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: ApiService().getTherapists(),
+                  future: apiService.getTherapistsByMassageType(_selectedMessageType),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -79,23 +114,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         ),
                       );
                     } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return Center(child: Text('No therapists available', style: TextStyle(fontSize: 14.sp)));
+                      return Center(child: Text('No therapists available for $_selectedMessageType', style: TextStyle(fontSize: 14.sp)));
                     }
 
-                    // Filter therapists by selected massage type
-                    final therapists = snapshot.data!
-                        .map((json) => Therapist.fromJson(json))
-                        .where((therapist) => therapist.assignRole == _selectedMessageType)
-                        .toList();
-
-                    if (therapists.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No therapists available for $_selectedMessageType',
-                          style: TextStyle(fontSize: 14.sp),
-                        ),
-                      );
-                    }
+                    final therapists = snapshot.data!.map((json) => Therapist.fromJson(json)).toList();
 
                     return ListView.builder(
                       itemCount: therapists.length,
@@ -103,7 +125,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         final therapist = therapists[index];
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundImage: NetworkImage(therapist.image),
+                            backgroundImage: CachedNetworkImageProvider(therapist.image),
                             radius: 20.r,
                             onBackgroundImageError: (_, __) => const Icon(Icons.person, color: Colors.grey),
                           ),
@@ -283,9 +305,19 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Message Type', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: Colors.black)),
+                  Text('Massage Type', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: Colors.black)),
                   SizedBox(height: 12.h),
-                  SizedBox(
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : errorMessage != null
+                      ? Center(
+                    child: Text(
+                      errorMessage!,
+                      style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                      : SizedBox(
                     height: 0.18.sh,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
@@ -295,10 +327,13 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         return Padding(
                           padding: EdgeInsets.symmetric(horizontal: 8.w),
                           child: CategoryItem(
-                            title: messageType["title"]!,
-                            image: messageType["image"]!,
-                            isSelected: _selectedMessageType == messageType["title"],
-                            onTap: () => setState(() => _selectedMessageType = messageType["title"]!),
+                            title: messageType['title']!,
+                            image: messageType['image']!,
+                            isSelected: _selectedMessageType == messageType['title'],
+                            onTap: () => setState(() {
+                              _selectedMessageType = messageType['title']!;
+                              _selectedTherapist = null;
+                            }),
                           ),
                         );
                       },
@@ -344,7 +379,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Message Preference', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Massage Preference', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 12.h),
                   Row(
                     children: [
@@ -353,22 +388,17 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       _buildTextOption('Back to Back', isSelected: _isBackToBack),
                     ],
                   ),
-                  if (_selectedTherapist == null) SizedBox(height: 20.h) else SizedBox(height: 12.h),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  SizedBox(height: 20.h),
+                  Text('Select number of people', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 8.h),
+                  Row(
                     children: [
-                      Text('Select number of people', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
-                      SizedBox(height: 8.h),
-                      Row(
-                        children: [
-                          IconButton(icon: Icon(Icons.remove_circle_outline, size: 24.sp), onPressed: _numberOfPeople > 1 ? () => setState(() => _numberOfPeople--) : null),
-                          Text('$_numberOfPeople', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
-                          IconButton(icon: Icon(Icons.add_circle_outline, size: 24.sp), onPressed: _numberOfPeople < 5 ? () => setState(() => _numberOfPeople++) : null),
-                        ],
-                      ),
-                      SizedBox(height: 20.h),
+                      IconButton(icon: Icon(Icons.remove_circle_outline, size: 24.sp), onPressed: _numberOfPeople > 1 ? () => setState(() => _numberOfPeople--) : null),
+                      Text('$_numberOfPeople', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                      IconButton(icon: Icon(Icons.add_circle_outline, size: 24.sp), onPressed: _numberOfPeople < 5 ? () => setState(() => _numberOfPeople++) : null),
                     ],
                   ),
+                  SizedBox(height: 20.h),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -377,37 +407,32 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     ],
                   ),
                   SizedBox(height: 12.h),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                      activeTrackColor: primaryTextColor,
+                      inactiveTrackColor: Colors.grey[200],
+                      thumbColor: Colors.white,
+                      overlayColor: boxColor,
+                      trackHeight: 8.0.h,
+                      valueIndicatorColor: secounderyBorderColor,
+                      valueIndicatorTextStyle: TextStyle(color: Colors.black, fontSize: 14.sp),
+                    ),
+                    child: Slider(
+                      value: double.parse(_selectedDuration.split(' ')[0]),
+                      min: 30,
+                      max: 120,
+                      divisions: 90,
+                      label: _selectedDuration,
+                      onChanged: (value) => setState(() => _selectedDuration = '${value.round()} min'),
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                          activeTrackColor: primaryTextColor,
-                          inactiveTrackColor: Colors.grey[200],
-                          thumbColor: Colors.white,
-                          overlayColor: boxColor,
-                          trackHeight: 8.0.h,
-                          valueIndicatorColor: secounderyBorderColor,
-                          valueIndicatorTextStyle: TextStyle(color: Colors.black, fontSize: 14.sp),
-                        ),
-                        child: Slider(
-                          value: double.parse(_selectedDuration.split(' ')[0]),
-                          min: 30,
-                          max: 120,
-                          divisions: 90,
-                          label: _selectedDuration,
-                          onChanged: (value) => setState(() => _selectedDuration = '${value.round()} min'),
-                        ),
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('30 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
-                          Text('120 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
-                        ],
-                      ),
+                      Text('30 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
+                      Text('120 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
                     ],
                   ),
                   SizedBox(height: 20.h),
@@ -418,11 +443,24 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     child: Row(
                       children: [
                         if (_selectedTherapist != null) ...[
-                          CircleAvatar(backgroundImage: NetworkImage(_selectedTherapist!.image), radius: 20.r),
+                          CircleAvatar(
+                            backgroundImage: CachedNetworkImageProvider(_selectedTherapist!.image),
+                            radius: 20.r,
+                            onBackgroundImageError: (_, __) => const Icon(Icons.person, color: Colors.grey),
+                          ),
                           SizedBox(width: 12.w),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [Text(_selectedTherapist!.name, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16.sp))],
+                            children: [
+                              Text(
+                                _selectedTherapist!.name,
+                                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16.sp),
+                              ),
+                              Text(
+                                _selectedTherapist!.assignRole,
+                                style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                              ),
+                            ],
                           ),
                           const Spacer(),
                         ] else ...[
@@ -431,7 +469,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           Text('Add', style: TextStyle(fontSize: 16.sp)),
                           const Spacer(),
                         ],
-                        if (_selectedTherapist != null) Text('Change', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w500, fontSize: 16.sp)),
+                        if (_selectedTherapist != null)
+                          Text('Change', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w500, fontSize: 16.sp)),
                       ],
                     ),
                   ),
@@ -481,7 +520,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       child: AbsorbPointer(
                         child: TextField(
                           readOnly: true,
-                          controller: TextEditingController(text: _selectedDateTime != null ? DateFormat('MMM d, yyyy h:mm a').format(_selectedDateTime!) : null),
+                          controller: TextEditingController(
+                            text: _selectedDateTime != null ? DateFormat('MMM d, yyyy h:mm a').format(_selectedDateTime!) : null,
+                          ),
                           decoration: InputDecoration(
                             prefixIcon: Icon(Icons.calendar_month, color: primaryButtonColor),
                             hintText: _selectedDateTime == null ? "Select Date & Time" : null,
@@ -580,7 +621,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                         final selectedMessage = messageTypes.firstWhere(
                               (message) => message["title"] == _selectedMessageType,
-                          orElse: () => {"title": "Thai Massage", "image": "assets/images/thi_massage.png"},
+                          orElse: () => {"title": "Swedish Massage", "image": "${ApiService.baseUrl}/media/documents/default2.jpg"},
                         );
 
                         // Handle created_at and date_time
@@ -592,9 +633,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                         // Map massage type to API format
                         final massageTypeMap = {
-                          'Thai Massage': 'thai_massage',
                           'Swedish Massage': 'swedish_massage',
-                          'Deep Tissue': 'deep_tissue',
+                          'Deep Tissue Massage': 'deep_tissue',
+                          'Aromatherapy Massage': 'aromatherapy_massage',
                         };
 
                         // Build payload
@@ -611,7 +652,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           'elevator_or_escalator': _elevatorSelection == 'Yes',
                           'parking_type': _parkingSelection ?? 'None',
                           'any_pets': _petsSelection == 'Yes',
-                          'massage_type': massageTypeMap[_selectedMessageType] ?? 'thai_massage',
+                          'massage_type': massageTypeMap[_selectedMessageType] ?? 'swedish_massage',
                           'preferred_modality': preferences['Preferred Modality']?.isNotEmpty ?? false ? preferences['Preferred Modality'] : null,
                           'preferred_pressure': preferences['Preferred Pressure']?.isNotEmpty ?? false ? preferences['Preferred Pressure'] : null,
                           'reason_for_massage': preferences['Reasons for Massage']?.isNotEmpty ?? false ? preferences['Reasons for Massage'] : null,
@@ -619,7 +660,6 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           'coversion_preference': preferences['Conversation Preferences']?.isNotEmpty ?? false ? preferences['Conversation Preferences'] : null,
                           'pregnancy': preferences['Pregnancy (Female customers)']?.isNotEmpty ?? false ? preferences['Pregnancy (Female customers)'] : null,
                           'instant_appointment': !_isScheduleSelected,
-                          'status': 'accepted',
                           'created_at': createdAt.toUtc().toIso8601String(),
                           'user': int.parse(userId),
                           'therapist_input_user_id': _selectedTherapist!.user,
@@ -629,7 +669,6 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                         try {
                           LoadingManager.showLoading();
-                          final apiService = ApiService();
                           final response = await apiService.createBooking(payload);
                           LoadingManager.hideLoading();
                           preferencesController.clearPreferences();

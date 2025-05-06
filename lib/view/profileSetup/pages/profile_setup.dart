@@ -25,10 +25,10 @@ class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({super.key});
 
   @override
-  State<ProfileSetupPage> createState() => _ProfileSetupPageState();
+  State<ProfileSetupPage> createState() => ProfileSetupPageState();
 }
 
-class _ProfileSetupPageState extends State<ProfileSetupPage> {
+class ProfileSetupPageState extends State<ProfileSetupPage> {
   File? _image;
   final nameController = TextEditingController();
   final emailController = TextEditingController();
@@ -44,11 +44,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   void initState() {
     super.initState();
     final arguments = Get.arguments as Map<String, dynamic>?;
+    isSocialSignUp = arguments?['source'] == 'social';
     nameController.text = arguments?['full_name'] ?? '';
     emailController.text = arguments?['email'] ?? '';
     phoneController.text = arguments?['phone_number'] ?? '';
     selectedCountryCode = arguments?['country_code'] ?? '+1';
-    isSocialSignUp = arguments?['source'] == 'social';
     userId = arguments?['user_id'];
     profileId = arguments?['profile_id'];
     AppLogger.debug(
@@ -179,13 +179,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   bool validateInputs() {
-    // Validate Name
     if (nameController.text.trim().isEmpty) {
-      CustomSnackBar.show(context, "Please enter your name", type: ToastificationType.error);
+      CustomSnackBar.show(context, "Please enter your full name", type: ToastificationType.error);
       return false;
     }
-
-    // Validate Email
     if (emailController.text.trim().isEmpty) {
       CustomSnackBar.show(context, "Please enter your email", type: ToastificationType.error);
       return false;
@@ -194,8 +191,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       CustomSnackBar.show(context, "Please enter a valid email address", type: ToastificationType.error);
       return false;
     }
-
-    // Validate Phone Number
     if (phoneController.text.trim().isEmpty) {
       CustomSnackBar.show(context, "Please enter a phone number", type: ToastificationType.error);
       return false;
@@ -204,8 +199,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       CustomSnackBar.show(context, "Please enter a valid phone number (7-15 digits)", type: ToastificationType.error);
       return false;
     }
-
-    // Validate Date of Birth
     if (dobController.text.trim().isEmpty) {
       CustomSnackBar.show(context, "Please select your date of birth", type: ToastificationType.error);
       return false;
@@ -216,19 +209,14 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       CustomSnackBar.show(context, "Invalid date format. Please use YYYY-MM-DD", type: ToastificationType.error);
       return false;
     }
-
-    // Validate Image
     if (_image == null) {
       CustomSnackBar.show(context, "Please upload a profile picture", type: ToastificationType.error);
       return false;
     }
-
-    // Validate userId and profileId
     if (userId == null || profileId == null) {
       CustomSnackBar.show(context, "User or profile data missing", type: ToastificationType.error);
       return false;
     }
-
     return true;
   }
 
@@ -243,10 +231,12 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       final isTherapist = Get.arguments?['isTherapist'] ?? false;
 
       final phoneNumber = phoneController.text.trim();
+      final fullName = nameController.text.trim();
       final response = await apiService.setupClientProfile(
         userId!,
         profileId: profileId!,
         image: _image,
+        fullName: fullName.isNotEmpty ? fullName : null,
         phone: phoneNumber.isNotEmpty ? phoneNumber : null,
         dateOfBirth: dobController.text.trim(),
       );
@@ -264,7 +254,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
           arguments: {
             "source": "signup",
             "email": emailController.text.trim(),
-            "full_name": nameController.text.trim(),
+            "full_name": fullName,
             "phone_number": phoneNumber,
             "country_code": countryCode,
             "isTherapist": isTherapist,
@@ -354,10 +344,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               }),
               SizedBox(height: 20.h),
               CustomTextField(
-                hintText: "Enter your name",
+                hintText: "Enter your full name",
                 icon: Icons.person_outline,
                 controller: nameController,
-                readOnly: true,
+                readOnly: isSocialSignUp,
               ),
               SizedBox(height: 15.h),
               CustomTextField(
@@ -365,14 +355,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 icon: Icons.email_outlined,
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                readOnly: true,
+                readOnly: isSocialSignUp,
               ),
               SizedBox(height: 15.h),
               PhoneNumberField(
                 controller: phoneController,
                 phoneFieldController: phoneFieldController,
                 initialCountryCode: selectedCountryCode,
-                readOnly: !isSocialSignUp,
               ),
               SizedBox(height: 15.h),
               TextField(
@@ -380,7 +369,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 readOnly: true,
                 decoration: InputDecoration(
                   hintText: "Select Date of Birth",
-                  prefixIcon: Icon(Icons.calendar_today_outlined),
+                  prefixIcon: const Icon(Icons.calendar_today_outlined),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(25.r),
                     borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w),

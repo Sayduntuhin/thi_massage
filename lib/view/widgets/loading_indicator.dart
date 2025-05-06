@@ -10,9 +10,9 @@ class MinimalLoadingScreen extends StatelessWidget {
     return  Scaffold(
       backgroundColor: Colors.transparent,
       body: Center(
-        child: LoadingAnimationWidget.discreteCircle(
+        child: LoadingAnimationWidget.hexagonDots(
           color: primaryColor,
-          size: 0.12.sw,
+          size: 0.10.sw,
         ),
       ),
     );

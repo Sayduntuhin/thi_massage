@@ -39,8 +39,12 @@ class ThaiMassageApp extends StatelessWidget {
             fontFamily: "Urbanist",
             scaffoldBackgroundColor: Colors.white,
             primaryColor: const Color(0xFFAD7E23),
+            appBarTheme: AppBarTheme(
+              scrolledUnderElevation: 0,
+            ),
             colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFAD7E23)),
             useMaterial3: true,
+
           ),
           initialRoute: Routes.initial,
           getPages: AppPages.routes,

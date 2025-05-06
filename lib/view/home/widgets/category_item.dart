@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CategoryItem extends StatelessWidget {
   final String title;
@@ -27,21 +28,40 @@ class CategoryItem extends StatelessWidget {
             height: 0.12.sh,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20.r),
-              image: DecorationImage(
-                image: AssetImage(image),
-                fit: BoxFit.cover,
-              ),
             ),
             child: Stack(
               alignment: Alignment.center,
               children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20.r),
+                  child: image.startsWith('http')
+                      ? CachedNetworkImage(
+                    imageUrl: image,
+                    width: 0.3.sw,
+                    height: 0.12.sh,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                    errorWidget: (context, url, error) => Image.asset(
+                      'assets/images/thi_massage.png',
+                      width: 0.3.sw,
+                      height: 0.12.sh,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                      : Image.asset(
+                    image,
+                    width: 0.3.sw,
+                    height: 0.12.sh,
+                    fit: BoxFit.cover,
+                  ),
+                ),
                 // Background shade when selected
                 if (isSelected)
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20.r),
-                        color: const Color(0xFFB28D28).withOpacity(0.5), // Move color inside BoxDecoration
+                        color: const Color(0xFFB28D28).withOpacity(0.5),
                       ),
                     ),
                   ),
@@ -64,16 +84,16 @@ class CategoryItem extends StatelessWidget {
           ),
           SizedBox(height: 8.h),
           SizedBox(
-            height: 0.04.sh,
+            height: 0.035.sh,
             width: 0.3.sw,
             child: Text(
               title,
-              maxLines: 2,
+              maxLines: 1,
               style: TextStyle(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w400,
                 fontFamily: "Urbanist",
-                color:  const Color(0xff666561),
+                color: const Color(0xff666561),
               ),
               textAlign: TextAlign.center,
             ),

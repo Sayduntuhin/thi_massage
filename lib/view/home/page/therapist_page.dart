@@ -3,7 +3,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
-import '../../profile/widgets/carve_shap_painter.dart';
+
+import '../../client_profile/pages/profile_page.dart';
 
 class TherapistProfileScreen extends StatefulWidget {
   const TherapistProfileScreen({super.key});

@@ -59,6 +59,8 @@ dependencies:
   geocoding: ^3.0.0
   google_maps_flutter: ^2.12.1
   cached_network_image: ^3.4.1
+  shimmer: ^3.0.0
+  web_socket_channel: ^3.0.3
 
 
 dev_dependencies:

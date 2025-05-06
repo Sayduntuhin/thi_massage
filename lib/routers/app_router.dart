@@ -9,8 +9,7 @@ import 'package:thi_massage/view/booking/pages/client_appointment_page.dart';
 import 'package:thi_massage/view/chat/pages/chat_details_page.dart';
 import 'package:thi_massage/view/home/page/home_page.dart';
 import 'package:thi_massage/view/home/page/notification_page.dart';
-import 'package:thi_massage/view/profile/pages/change_password_page.dart';
-import 'package:thi_massage/view/profile/pages/invite_friend_page.dart';
+import 'package:thi_massage/view/auth/forgetPassword/change_password_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/add_card_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/review_submitted_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/verify_documents_page.dart';
@@ -22,11 +21,12 @@ import '../view/auth/login/login_page.dart';
 import '../view/booking/pages/client_cutomer_preferences_page.dart';
 import '../view/booking/pages/client_live_treaking_page.dart';
 import '../view/booking/pages/terms_and_conditions.dart';
+import '../view/client_profile/pages/client_edite_profile_page.dart';
+import '../view/client_profile/pages/favorite_therapist.dart';
+import '../view/client_profile/pages/invite_friend_page.dart';
+import '../view/client_profile/pages/support_page.dart';
 import '../view/home/page/therapist_page.dart';
 import '../view/home/widgets/search_page.dart';
-import '../view/profile/pages/edite_profile_page.dart';
-import '../view/profile/pages/favorite_therapist.dart';
-import '../view/profile/pages/support_page.dart';
 import '../view/profileSetup/pages/profile_setup.dart';
 import '../view/wallet/pages/funds_Withdraw_Page.dart';
 
@@ -101,7 +101,6 @@ class AppPages {
     GetPage(name: Routes.appointmentRequestPage, page: () => AppointmentRequestPage (), transition: Transition.fadeIn),
 
     ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Wallet<<<<<<<<<<<<<<<<<<<
-    GetPage(name: Routes.editProfile, page: () => EditProfilePage(), transition: Transition.fadeIn),
     GetPage(name: Routes.fundsWithdrawPage, page: () => FundsWithdrawPage(selectedBank: Get.arguments['selectedBank'],), transition: Transition.fadeIn),
     GetPage(name: Routes.paymentHistoryPage, page: () => PayoutHistoryPage(), transition: Transition.fadeIn),
     GetPage(name: Routes.newPayoutPage, page: () => NewPayoutPage(), transition: Transition.fadeIn),

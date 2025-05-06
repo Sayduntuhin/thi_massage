@@ -114,9 +114,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$_imageUrl");
       });
     } catch (e) {
-      String errorMessage = "Failed to fetch profile. Please try again.";
+      String errorMessage = "Something went wrong. Please try again.";
       if (e is NotFoundException) {
-        errorMessage = "Profile not found. Please set up your profile.";
+        errorMessage = "Profile not found. Please set up your Profile.";
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         Get.toNamed('/profileSetup', arguments: {
           'user_id': userId,
@@ -132,7 +132,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         Get.offAllNamed('/login');
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-      AppLogger.error("Fetch profile error: $e");
+      AppLogger.error("Fetch Profile error: $e");
     } finally {
       setState(() {
         isLoading = false;
@@ -199,9 +199,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
       setState(() {
         isEditing = false; // Exit edit mode
       });
-      await fetchProfileData(); // Refresh profile data
+      await fetchProfileData(); // Refresh client_profile data
     } catch (e) {
-      String errorMessage = "Failed to update profile. Please try again.";
+      String errorMessage = "Failed to update client_profile. Please try again.";
       if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {

@@ -7,12 +7,14 @@ import '../../../../themes/colors.dart';
 import '../../../routers/app_router.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
+import '../widgets/customTextField.dart';
 
 class ForgotPasswordPage extends StatelessWidget {
   const ForgotPasswordPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final emailController = TextEditingController();
     return Scaffold(
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -34,7 +36,7 @@ class ForgotPasswordPage extends StatelessWidget {
             ),
             SizedBox(height: 5.h),
             Text(
-              "A 4-digit OTP will be sent via SMS to verify your phone number",
+              "A 4-digit OTP will be sent email to verify your Email",
               style: TextStyle(
                 fontSize: 14.sp,
                 color: secounderyTextColor,
@@ -44,7 +46,12 @@ class ForgotPasswordPage extends StatelessWidget {
             SizedBox(height: 20.h),
 
             // Phone Number Field
-            PhoneNumberField(),
+            CustomTextField(
+              hintText: "Enter your email",
+              icon: Icons.email_outlined,
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+            ),
             SizedBox(height: 0.2.sh),
             // Continue Button
             ThaiMassageButton(

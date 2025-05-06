@@ -1,10 +1,10 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:get/get.dart';
 import '../../../themes/colors.dart';
+import '../../../api/api_service.dart';
 
 class TherapistCard extends StatelessWidget {
   final String image;
@@ -30,13 +30,12 @@ class TherapistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () {
-        print('Navigating to TherapistProfileScreen for $name'); // Debug print
+        print('Navigating to TherapistProfileScreen for $name');
         onTap();
       },
       borderRadius: BorderRadius.circular(15.r),
       child: Stack(
         children: [
-          // Content
           Padding(
             padding: EdgeInsets.only(top: 25.h, bottom: 0.h),
             child: Container(
@@ -48,7 +47,6 @@ class TherapistCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(height: 10.h),
-                  // Rating
                   Row(
                     children: [
                       SizedBox(width: 15.w),
@@ -63,13 +61,12 @@ class TherapistCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  // Name
                   Padding(
                     padding: EdgeInsets.only(left: 15.w),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         maxWidth: 0.25.sw,
-                        minWidth: min(0.2.sw, 0.25.sw), // Ensure minWidth <= maxWidth
+                        minWidth: min(0.2.sw, 0.25.sw),
                       ),
                       child: Text(
                         name,
@@ -84,12 +81,11 @@ class TherapistCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Therapist or Bookings
                   Container(
                     height: 0.065.sh,
                     constraints: BoxConstraints(
                       maxWidth: 0.35.sw,
-                      minWidth: min(0.3.sw, 0.35.sw), // Ensure minWidth <= maxWidth
+                      minWidth: min(0.3.sw, 0.35.sw),
                     ),
                     margin: EdgeInsets.only(top: 6.h),
                     padding: EdgeInsets.symmetric(horizontal: 8.w),
@@ -127,7 +123,7 @@ class TherapistCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Spacer(), // Ensures content stays left-aligned
+                            Spacer(),
                           ],
                         ),
                         Text(
@@ -146,18 +142,16 @@ class TherapistCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // Therapist image
           Positioned(
             right: 5,
             bottom: 0,
-            child: Image.asset(
+            child: Image.network(
               image,
               width: 0.4.sw,
               height: 0.25.sh,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
-                print('Error loading image: $image'); // Debug print
+                print('Error loading image: $image');
                 return const Icon(Icons.error, color: Colors.red);
               },
             ),
@@ -168,7 +162,7 @@ class TherapistCard extends StatelessWidget {
             child: SizedBox(
               height: 0.028.sh,
               child: ElevatedButton(
-                onPressed: onTap, // Still works for the button
+                onPressed: onTap,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: const Color(0xFFB28D28),
@@ -184,7 +178,6 @@ class TherapistCard extends StatelessWidget {
               ),
             ),
           ),
-          // Favorite button
           Positioned(
             top: 30.h,
             right: 15.w,
@@ -211,75 +204,72 @@ class TherapistCard extends StatelessWidget {
   }
 }
 
-// Carousel for therapist cards
 class TherapistCarousel extends StatefulWidget {
-  const TherapistCarousel({super.key});
+  final List<Map<String, dynamic>> therapists;
+
+  const TherapistCarousel({super.key, required this.therapists});
 
   @override
   State<TherapistCarousel> createState() => _TherapistCarouselState();
 }
 
 class _TherapistCarouselState extends State<TherapistCarousel> {
-  final List<Map<String, dynamic>> therapists = [
-    {
-      'image': 'assets/images/therapist_man.png',
-      'name': 'Mical Martinez',
-      'rating': '4.2',
-      'bookings': '102',
-      'isFavorite': false,
-    },
-    {
-      'image': 'assets/images/therapist_woman.png',
-      'name': 'Sarah Johnson',
-      'rating': '4.2',
-      'bookings': '',
-      'isFavorite': false,
-    },
-    {
-      'image': 'assets/images/therapist_man.png',
-      'name': 'Sarah Johnson',
-      'rating': '4.5',
-      'bookings': '78',
-      'isFavorite': false,
-    },
-    {
-      'image': 'assets/images/therapist_woman.png',
-      'name': 'David Wilson',
-      'rating': '4.8',
-      'bookings': '156',
-      'isFavorite': false,
-    },
-  ];
+  late List<Map<String, dynamic>> _therapists;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize therapists with isFavorite flag
+    _therapists = widget.therapists.map((therapist) {
+      return {
+        ...therapist,
+        'isFavorite': therapist['isFavorite'] ?? false,
+      };
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_therapists.isEmpty) {
+      return Center(
+        child: Text(
+          'No nearby therapists found',
+          style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CarouselSlider.builder(
-          itemCount: therapists.length,
+          itemCount: _therapists.length,
           itemBuilder: (context, index, realIndex) {
-            final therapist = therapists[index];
+            final therapist = _therapists[index];
             return TherapistCard(
-              image: therapist['image'] as String,
-              name: therapist['name'] as String,
-              rating: therapist['rating'] as String,
-              bookings: therapist['bookings'] as String,
+              image: therapist['image_url'].startsWith('/media')
+                  ? '${ApiService.baseUrl}${therapist['image_url']}'
+                  : therapist['image_url'],
+              name: therapist['full_name'] as String,
+              rating: therapist['average_rating'].toStringAsFixed(1),
+              bookings: therapist['total_completed_bookings'].toString(),
               isFavorite: therapist['isFavorite'] as bool,
               onTap: () {
-                // Navigate to TherapistProfileScreen with name and image
-                print('Passing arguments: name=${therapist['name']}, image=${therapist['image']}'); // Debug print
+                print('Navigating to therapistPage for ${therapist['full_name']}');
                 Get.toNamed(
                   "/therapistPage",
                   arguments: {
-                    'name': therapist['name'] as String,
-                    'image': therapist['image'] as String,
+                    'therapist_user_id': therapist['therapist_user_id'],
+                    'name': therapist['full_name'],
+                    'image': therapist['image_url'].startsWith('/media')
+                        ? '${ApiService.baseUrl}${therapist['image_url']}'
+                        : therapist['image_url'],
                   },
                 );
               },
               onFavoriteTap: () {
                 setState(() {
-                  therapists[index]['isFavorite'] = !therapists[index]['isFavorite'];
+                  _therapists[index]['isFavorite'] = !(_therapists[index]['isFavorite'] as bool);
                 });
               },
             );

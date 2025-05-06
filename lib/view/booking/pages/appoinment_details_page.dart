@@ -4,7 +4,8 @@ import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:thi_massage/themes/colors.dart';
-import '../../profile/widgets/carve_shap_painter.dart';
+
+import '../../client_profile/pages/profile_page.dart';
 
 class AppointmentDetailScreen extends StatelessWidget {
   const AppointmentDetailScreen({super.key});

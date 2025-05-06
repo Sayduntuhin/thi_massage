@@ -1,29 +1,32 @@
-// In models/therapist_model.dart
+import 'package:thi_massage/api/api_service.dart';
+
 class Therapist {
-  final int user; // Maps to user (main identifier)
-  final String name; // Maps to full_name
-  final String image; // Fallback for missing image
+  final int user;
+  final String name;
+  final String image;
+  final String assignRole;
   final double rating;
-  final int reviewCount; // Fallback for total_booked
-  final String assignRole; // Maps to assign_role
+  final int reviewCount;
 
   Therapist({
     required this.user,
     required this.name,
     required this.image,
-    required this.rating,
-    required this.reviewCount,
     required this.assignRole,
+    this.rating = 0.0,
+    this.reviewCount = 0,
   });
 
   factory Therapist.fromJson(Map<String, dynamic> json) {
     return Therapist(
-      user: json['user'] as int? ?? 0, // Use user as main ID, fallback to 0
-      name: json['full_name'] as String? ?? 'Unknown Therapist', // Fallback for null full_name
-      image: json['image'] ?? 'https://randomuser.me/api/portraits/men/${json['user'] ?? 0}.jpg', // Fallback image using user ID
-      rating: double.tryParse(json['rating']?.toString() ?? '0.0') ?? 0.0, // Handle null rating
-      reviewCount: json['total_booked'] as int? ?? 0, // Fallback for total_booked
-      assignRole: json['assign_role'] as String? ?? '', // Fallback to empty string
+      user: json['therapist_user_id'] as int,
+      name: json['therapist_full_name'] as String,
+      image: json['therapist_image'].startsWith('/media')
+          ? '${ApiService.baseUrl}${json['therapist_image']}'
+          : json['therapist_image'] as String,
+      assignRole: json['therapist_assign_role'] as String,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: json['review_count'] as int? ?? 0,
     );
   }
 }

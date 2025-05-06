@@ -126,9 +126,9 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$_imageUrl");
       });
     } catch (e) {
-      String errorMessage = "Failed to fetch profile. Please try again.";
+      String errorMessage = "Failed to fetch client_profile. Please try again.";
       if (e is NotFoundException) {
-        errorMessage = "Profile not found. Please set up your profile.";
+        errorMessage = "Profile not found. Please set up your client_profile.";
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         Get.toNamed('/therapistProfileSetup', arguments: {
           'user_id': userId,
@@ -144,7 +144,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         Get.offAllNamed('/login');
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-      AppLogger.error("Fetch profile error: $e");
+      AppLogger.error("Fetch client_profile error: $e");
     } finally {
       setState(() {
         isLoading = false;
@@ -169,7 +169,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
 
  /* Future<void> _saveProfile() async {
     if (userId == null || profileId == null) {
-      CustomSnackBar.show(context, "User or profile data missing", type: ToastificationType.error);
+      CustomSnackBar.show(context, "User or client_profile data missing", type: ToastificationType.error);
       return;
     }
 
@@ -196,9 +196,9 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
       setState(() {
         isEditing = false; // Exit edit mode
       });
-      await fetchProfileData(); // Refresh profile data
+      await fetchProfileData(); // Refresh client_profile data
     } catch (e) {
-      String errorMessage = "Failed to update profile. Please try again.";
+      String errorMessage = "Failed to update client_profile. Please try again.";
       if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {

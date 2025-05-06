@@ -89,8 +89,8 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
             'phone_number': phoneNumber,
             'country_code': countryCode,
             'source': flowType,
-            'user_id': userId, // Pass user_id
-            'profile_id': profileId, // Pass profile_id
+            'user_id': userId,
+            'profile_id': profileId,
           },
         );
       }
