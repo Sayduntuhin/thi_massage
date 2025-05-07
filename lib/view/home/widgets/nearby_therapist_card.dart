@@ -1,10 +1,12 @@
 import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:get/get.dart';
 import '../../../themes/colors.dart';
 import '../../../api/api_service.dart';
+import '../../widgets/app_logger.dart';
 
 class TherapistCard extends StatelessWidget {
   final String image;
@@ -30,7 +32,7 @@ class TherapistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () {
-        print('Navigating to TherapistProfileScreen for $name');
+        AppLogger.debug('Navigating to TherapistProfileScreen for $name');
         onTap();
       },
       borderRadius: BorderRadius.circular(15.r),
@@ -123,11 +125,11 @@ class TherapistCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Spacer(),
+                            const Spacer(),
                           ],
                         ),
                         Text(
-                          "Since 15 Apr, 2022",
+                          "Since ${DateTime.now().year}", // Dynamic date for demo
                           style: TextStyle(
                             fontSize: 10.sp,
                             color: Colors.white,
@@ -145,13 +147,14 @@ class TherapistCard extends StatelessWidget {
           Positioned(
             right: 5,
             bottom: 0,
-            child: Image.network(
-              image,
+            child: CachedNetworkImage(
+              imageUrl: image,
               width: 0.4.sw,
               height: 0.25.sh,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                print('Error loading image: $image');
+              placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+              errorWidget: (context, url, error) {
+                AppLogger.error('Error loading image: $url, error: $error');
                 return const Icon(Icons.error, color: Colors.red);
               },
             ),
@@ -226,6 +229,7 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
         'isFavorite': therapist['isFavorite'] ?? false,
       };
     }).toList();
+    AppLogger.debug('TherapistCarousel initialized with ${_therapists.length} therapists: $_therapists');
   }
 
   @override
@@ -250,12 +254,12 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
               image: therapist['image_url'].startsWith('/media')
                   ? '${ApiService.baseUrl}${therapist['image_url']}'
                   : therapist['image_url'],
-              name: therapist['full_name'] as String,
-              rating: therapist['average_rating'].toStringAsFixed(1),
-              bookings: therapist['total_completed_bookings'].toString(),
+              name: therapist['full_name'] as String? ?? 'Unknown',
+              rating: (therapist['average_rating'] as num?)?.toStringAsFixed(1) ?? '0.0',
+              bookings: (therapist['total_completed_bookings'] as num?)?.toString() ?? '0',
               isFavorite: therapist['isFavorite'] as bool,
               onTap: () {
-                print('Navigating to therapistPage for ${therapist['full_name']}');
+                AppLogger.debug('Navigating to therapistPage for ${therapist['full_name']}');
                 Get.toNamed(
                   "/therapistPage",
                   arguments: {
@@ -275,11 +279,11 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
             );
           },
           options: CarouselOptions(
-            height: 200.h,
-            viewportFraction: 0.85,
-            enableInfiniteScroll: true,
+            height: 220.h, // Increased height for better visibility
+            viewportFraction: 0.9, // Slightly larger for better card display
+            enableInfiniteScroll: false, // Disable infinite scroll for clarity
             autoPlay: false,
-            enlargeCenterPage: true,
+            enlargeCenterPage: false, // Disable enlargement for consistent size
             padEnds: true,
           ),
         ),

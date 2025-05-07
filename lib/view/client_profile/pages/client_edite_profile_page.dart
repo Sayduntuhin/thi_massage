@@ -108,7 +108,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         initialDob = dobController.text;
         initialImageUrl = _imageUrl;
 
-        _imageUrl = response['image'] != '/api/media/documents/default.jpg' ? response['image'] : null;
+        _imageUrl = response['image'] != '/media/documents/default.jpg' ? response['image'] : null;
         profileId = response['id'];
         userId = response['user'];
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$_imageUrl");
@@ -375,15 +375,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
               color: Color(0xff383535),
             ),
           ),
-          SizedBox(
-            width: 0.55.sw,
-            child: isEditable
-                ? TextField(
-              controller: controller,
-              enabled: isEditable,
-              style: TextStyle(fontSize: 14.sp, color: Colors.black),
-              textAlign: TextAlign.right,
-              decoration: InputDecoration(
+          isEditable
+              ? Expanded(
+                child: TextField(
+                            controller: controller,
+                            enabled: isEditable,
+                            style: TextStyle(fontSize: 14.sp, color: Colors.black),
+                            textAlign: TextAlign.right,
+                            decoration: InputDecoration(
                 filled: true,
                 fillColor: Color(0xFFE8ECEF),
                 border: OutlineInputBorder(
@@ -399,15 +398,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   borderSide: BorderSide(color: Colors.black12, width: 1),
                 ),
                 contentPadding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 12.w),
-              ),
-            )
-                : Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                controller.text.isEmpty ? '-' : controller.text,
-                style: TextStyle(fontSize: 16.sp, color: Colors.black),
-                textAlign: TextAlign.right,
-              ),
+                            ),
+                          ),
+              )
+              : Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              controller.text.isEmpty ? '-' : controller.text,
+              style: TextStyle(fontSize: 16.sp, color: Colors.black),
+              textAlign: TextAlign.right,
             ),
           ),
         ],

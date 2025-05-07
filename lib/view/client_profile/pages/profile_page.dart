@@ -69,7 +69,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         fullName = response['full_name'] ?? 'User';
         email = response['email'] ?? '';
-        imageUrl = response['image'] != '/api/media/documents/default.jpg' ? response['image'] : null;
+        imageUrl = response['image'] != '/therapist/media/documents/default.jpg' ? response['image'] : null;
         profileId = response['id'];
         userId = response['user'];
         AppLogger.debug("Image URL set: ${ApiService.baseUrl}$imageUrl");

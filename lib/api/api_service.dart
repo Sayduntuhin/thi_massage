@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 
 class ApiService {
-  static const String _baseUrl = "http://192.168.10.36:3333";
+  static const String _baseUrl = "http://192.168.10.139:3333";
   final http.Client _client;
   final _storage = const FlutterSecureStorage();
   final Logger _logger;
@@ -646,7 +646,7 @@ class ApiService {
 
   ///------------------------------------Booking----------------------------------///
   Future<Map<String, dynamic>> createBooking(Map<String, dynamic> payload) async {
-    const String endpoint = '/api/bookings/';
+    const String endpoint = '/client/bookings/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final accessToken = await _storage.read(key: 'access_token');
@@ -727,7 +727,7 @@ class ApiService {
   }
   ///-----------------------Get Bookings method-----------------------///
   Future<List<Map<String, dynamic>>> getBookings() async {
-    const String endpoint = '/api/bookings/';
+    const String endpoint = '/client/bookings/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final accessToken = await _storage.read(key: 'access_token');
@@ -917,7 +917,7 @@ class ApiService {
   }
   ///-----------------------Get Client Profile Details method-----------------------///
   Future<Map<String, dynamic>> getClientProfile() async {
-    const String endpoint = '/api/client/profile/';
+    const String endpoint = '/client/client/profile/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final accessToken = await _storage.read(key: 'access_token');
@@ -950,8 +950,8 @@ class ApiService {
           final responseData = jsonDecode(response.body) as Map<String, dynamic>;
           // Adjust image URL to include /api/
           if (responseData['image'] != null && responseData['image'] != '/media/documents/default.jpg') {
-            if (!responseData['image'].startsWith('/api/')) {
-              responseData['image'] = '/api${responseData['image']}';
+            if (!responseData['image'].startsWith('/client/')) {
+              responseData['image'] = '/client${responseData['image']}';
             }
           }
           _logger.d('Client client_profile fetched successfully: $responseData');
@@ -988,7 +988,7 @@ class ApiService {
   }
   ///-----------------------Update Client Profile Details method-----------------------///
   Future<Map<String, dynamic>> updateClientProfile(Map<String, dynamic> fields, {File? image}) async {
-    const String endpoint = '/api/client/profile/';
+    const String endpoint = '/client/client/profile/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final accessToken = await _storage.read(key: 'access_token');
@@ -1092,7 +1092,7 @@ class ApiService {
 
   ///-----------------------Get Favorite Therapists method-----------------------///
   Future<List<Map<String, dynamic>>> getFavoriteTherapists() async {
-    const String endpoint = '/api/love-therapists/';
+    const String endpoint = '/client/love-therapists/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final accessToken = await _storage.read(key: 'access_token');

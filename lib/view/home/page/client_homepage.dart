@@ -323,6 +323,14 @@ class _HomeContentState extends State<HomeContent> {
                 textAlign: TextAlign.center,
               ),
             )
+                : webSocketController.nearbyTherapists.isEmpty
+                ? Center(
+              child: Text(
+                'No therapists found nearby',
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            )
                 : TherapistCarousel(therapists: webSocketController.nearbyTherapists)),
             SizedBox(height: 20.h),
             Text(

@@ -4,11 +4,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../view/widgets/app_logger.dart';
 
 class WebSocketController extends GetxController {
-  final _webSocketUrl = 'ws://192.168.10.36:3333/ws/location/';
+  final _webSocketUrl = 'ws://192.168.10.139:3333/ws/location/';
   WebSocketChannel? _webSocketChannel;
   final nearbyTherapists = <Map<String, dynamic>>[].obs;
   final isTherapistsLoading = true.obs;
-  final errorMessage = Rx<String?>(null); // Changed to Rx<String?> to allow null
+  final errorMessage = Rx<String?>(null);
 
   @override
   void onInit() {
@@ -32,9 +32,14 @@ class WebSocketController extends GetxController {
             (message) {
           final data = jsonDecode(message);
           AppLogger.debug('WebSocket received: $data');
-          nearbyTherapists.value = List<Map<String, dynamic>>.from(data['nearby_users'] ?? []);
-          isTherapistsLoading.value = false;
-          errorMessage.value = null; // Clear error message
+          if (data.containsKey('nearby_users')) {
+            nearbyTherapists.value = List<Map<String, dynamic>>.from(data['nearby_users'] ?? []);
+            isTherapistsLoading.value = false;
+            errorMessage.value = null;
+            AppLogger.debug('Updated nearbyTherapists: ${nearbyTherapists.value}');
+          } else {
+            AppLogger.debug('Ignoring non-therapist message: $data');
+          }
         },
         onError: (error) {
           AppLogger.error('WebSocket error: $error');
@@ -53,8 +58,9 @@ class WebSocketController extends GetxController {
     }
   }
 
-  void reconnect() {
+  Future<void> reconnect() async {
     _webSocketChannel?.sink.close();
+    await Future.delayed(const Duration(milliseconds: 1000)); // Increased delay
     connect();
   }
 }
