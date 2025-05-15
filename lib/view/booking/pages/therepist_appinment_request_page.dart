@@ -1,10 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:async';
 import '../../../themes/colors.dart';
+import '../../widgets/app_logger.dart'; // Add this import
 
 class AppointmentRequestPage extends StatefulWidget {
   const AppointmentRequestPage({super.key});
@@ -17,23 +18,11 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
   bool _isAccepted = false;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
-
-  // Google Maps Controller Completer
   final Completer<GoogleMapController> _mapControllerCompleter = Completer<GoogleMapController>();
-
-  // Initial location coordinates (can be changed to your desired location)
   final LatLng _initialPosition = const LatLng(37.42796133580664, -122.085749655962);
-
-  // Set of markers
   final Set<Marker> _markers = {};
-
-  // Map type
   MapType _currentMapType = MapType.normal;
-
-  // Map appearance customization options
   bool _showTraffic = false;
-
-  // Custom marker icon
   BitmapDescriptor? _customMarkerIcon;
 
   @override
@@ -46,21 +35,13 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     _progressAnimation = Tween<double>(begin: 0, end: 0.6).animate(
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
-
-    // Initialize custom marker
     _setCustomMarkerIcon();
-
-    // Add initial marker
     _setInitialMarker();
+    AppLogger.debug('AppointmentRequestPage initialized');
   }
 
-  // Create custom marker icon
   void _setCustomMarkerIcon() async {
-    // You can use BitmapDescriptor.fromAssetImage to load a custom marker icon
-    // For now, we'll use a default marker with a custom color
     _customMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
-
-    // If you added markers before setting the custom icon, update them
     if (_markers.isNotEmpty) {
       setState(() {
         _updateMarkers();
@@ -68,7 +49,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     }
   }
 
-  // Set initial marker
   void _setInitialMarker() {
     _markers.add(
       Marker(
@@ -86,7 +66,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     );
   }
 
-  // Update all markers with the custom icon
   void _updateMarkers() {
     _markers.clear();
     _markers.add(
@@ -105,7 +84,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     );
   }
 
-  // Show info dialog when marker is tapped
   void _showLocationInfoDialog() {
     showDialog(
       context: context,
@@ -141,10 +119,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     );
   }
 
-  // Launch navigation (implementation would depend on your navigation provider)
   void _launchNavigation() {
-    // This is where you would implement navigation launching
-    // For example, using url_launcher to open Google Maps
     Get.snackbar(
       'Navigation',
       'Launching navigation to Hamill Ave...',
@@ -166,57 +141,52 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     _progressController.forward();
   }
 
-  // Change map type (normal, satellite, terrain, hybrid)
   void _onMapTypeButtonPressed() {
     setState(() {
-      _currentMapType = _currentMapType == MapType.normal
-          ? MapType.satellite
-          : MapType.normal;
+      _currentMapType = _currentMapType == MapType.normal ? MapType.satellite : MapType.normal;
     });
   }
 
-  // Toggle traffic view
   void _onTrafficButtonPressed() {
     setState(() {
       _showTraffic = !_showTraffic;
     });
   }
 
-  // Function to handle map creation
   void _onMapCreated(GoogleMapController controller) {
-    _mapControllerCompleter.complete(controller);
-
-    // You can customize map style here
-    // For example, to set a custom map style JSON:
-    /*
-    controller.setMapStyle('''
-      [
-        {
-          "featureType": "all",
-          "elementType": "labels.text.fill",
-          "stylers": [
-            {
-              "color": "#7c93a3"
-            },
-            {
-              "lightness": "-10"
-            }
-          ]
-        }
-      ]
-    ''');
-    */
+    try {
+      _mapControllerCompleter.complete(controller);
+      AppLogger.debug('Google Map created successfully');
+    } catch (e) {
+      AppLogger.error('Error creating Google Map: $e');
+      _showMapErrorDialog();
+    }
   }
 
-  // Function to animate camera to a position
+  void _showMapErrorDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Map Error'),
+          content: const Text('There was an error loading the map. Please check your API key configuration.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
   Future<void> _goToLocation(LatLng position) async {
     final GoogleMapController controller = await _mapControllerCompleter.future;
     final CameraPosition newPosition = CameraPosition(
       target: position,
       zoom: 18,
-      tilt: 50.0,  // Tilt angle
+      tilt: 50.0,
     );
-
     await controller.animateCamera(CameraUpdate.newCameraPosition(newPosition));
   }
 
@@ -226,7 +196,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Top colored background with curve
           Container(
             height: 0.36.sh,
             decoration: const BoxDecoration(
@@ -246,8 +215,9 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       GestureDetector(
-                          onTap: () => Get.back(),
-                          child: Icon(Icons.arrow_back_ios, color: Colors.white, size: 25.sp)),
+                        onTap: () => Get.back(),
+                        child: Icon(Icons.arrow_back_ios, color: Colors.white, size: 25.sp),
+                      ),
                       SizedBox(
                         width: 0.45.sw,
                         child: Text(
@@ -339,7 +309,11 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                               GestureDetector(
                                 onTap: _acceptAppointment,
                                 child: _statusButton(
-                                    "Accept", const Color(0xFFCBF299), const Color(0xff33993A), const Color(0xFFCBF299)),
+                                  "Accept",
+                                  const Color(0xFFCBF299),
+                                  const Color(0xff33993A),
+                                  const Color(0xFFCBF299),
+                                ),
                               ),
                               SizedBox(width: 6.w),
                               _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
@@ -365,7 +339,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Padding(
-                          padding: EdgeInsets.only(left: 16.w), // Internal padding for text
+                          padding: EdgeInsets.only(left: 16.w),
                           child: Text(
                             "Customer Preferences",
                             style: TextStyle(
@@ -376,7 +350,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                           ),
                         ),
                         Padding(
-                          padding: EdgeInsets.only(right: 16.w), // Internal padding for icon
+                          padding: EdgeInsets.only(right: 16.w),
                           child: Icon(Icons.arrow_forward_ios, size: 20.sp, color: Colors.white),
                         ),
                       ],
@@ -390,13 +364,10 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Google Map
                           GestureDetector(
                             onTap: () {
-
                               Get.toNamed('/liveTrackingPage');
-
-                             },
+                            },
                             child: Container(
                               margin: EdgeInsets.symmetric(vertical: 10.h),
                               height: 150.h,
@@ -415,7 +386,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                 borderRadius: BorderRadius.circular(16.r),
                                 child: Stack(
                                   children: [
-                                    // Real Google Maps integration
                                     GoogleMap(
                                       onMapCreated: _onMapCreated,
                                       initialCameraPosition: CameraPosition(
@@ -429,17 +399,14 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                       trafficEnabled: _showTraffic,
                                       mapType: _currentMapType,
                                       onTap: (LatLng position) {
-                                        // You can add more markers or handle map taps
+                                        AppLogger.debug('Map tapped at: $position');
                                       },
                                     ),
-
-                                    // Map controls
                                     Positioned(
                                       right: 10,
                                       top: 10,
                                       child: Column(
                                         children: [
-                                          // Map type toggle button
                                           FloatingActionButton(
                                             heroTag: "mapTypeButton",
                                             mini: true,
@@ -454,8 +421,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                             ),
                                           ),
                                           SizedBox(height: 5.h),
-
-                                          // Traffic toggle button
                                           FloatingActionButton(
                                             heroTag: "trafficButton",
                                             mini: true,
@@ -470,8 +435,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                         ],
                                       ),
                                     ),
-
-                                    // Zoom to location button
                                     Positioned(
                                       right: 10,
                                       bottom: 10,
@@ -487,8 +450,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                         ),
                                       ),
                                     ),
-
-                                    // Location name
                                     Positioned(
                                       top: 10.h,
                                       left: 0,
@@ -523,7 +484,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                             ),
                           ),
                           SizedBox(height: 10.h),
-                          // Duration with animated progress bar
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -571,7 +531,6 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                             ],
                           ),
                           SizedBox(height: 10.h),
-                          // Location Details
                           Container(
                             padding: EdgeInsets.all(12.r),
                             decoration: BoxDecoration(
@@ -626,10 +585,22 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Date Schedule",
-                                style: TextStyle(color: Colors.white, fontSize: 10.sp, fontWeight: FontWeight.w500)),
-                            Text("20 July, 2024",
-                                style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.w600)),
+                            Text(
+                              "Date Schedule",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              "20 July, 2024",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -646,10 +617,22 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Time Scheduled",
-                                style: TextStyle(color: Colors.white, fontSize: 10.sp, fontWeight: FontWeight.w500)),
-                            Text("11:00 am",
-                                style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.w600)),
+                            Text(
+                              "Time Scheduled",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              "11:00 am",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -658,7 +641,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                 ),
               ),
             ),
-          )
+          ),
         ],
       ),
     );

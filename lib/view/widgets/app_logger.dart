@@ -1,17 +1,9 @@
 import 'package:logger/logger.dart';
 
 class AppLogger {
-  static final Logger _logger = Logger(
-    printer: PrettyPrinter(
-      methodCount: 2, // Number of method calls to display
-      errorMethodCount: 8, // Number of method calls for errors
-      lineLength: 120, // Width of the output
-      colors: true, // Colorful log messages
-      printEmojis: true, // Print emojis for log levels
-      printTime: true, // Include timestamp
-    ),
-    level: Level.debug, // Log all messages in debug mode
-  );
+  static final Logger _logger = Logger();
+
+  AppLogger(String s);
 
   static Logger get instance => _logger;
 

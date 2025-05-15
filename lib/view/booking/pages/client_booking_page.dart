@@ -9,7 +9,7 @@ import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
 import 'package:thi_massage/view/widgets/custom_snackbar.dart';
 import 'package:toastification/toastification.dart';
 
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 
 class BookingsPage extends StatefulWidget {
   const BookingsPage({super.key});

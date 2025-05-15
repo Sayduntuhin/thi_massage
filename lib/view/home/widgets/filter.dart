@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
+import 'package:intl/intl.dart';
 
 class FilterBottomSheet extends StatefulWidget {
   const FilterBottomSheet({super.key});
@@ -13,12 +13,20 @@ class FilterBottomSheet extends StatefulWidget {
 }
 
 class _FilterBottomSheetState extends State<FilterBottomSheet> {
-  RangeValues _priceRange = const RangeValues(5, 50); // Start range from $5
+  RangeValues _priceRange = const RangeValues(5, 50);
   String _selectedGender = "Any";
   String? _selectedRating;
   List<String> selectedTimes = [];
 
-  List<String> times = ["10:00 am", "1:00 pm", "12:00 pm", "2:00 pm", "03:00 pm", "05:00 pm"];
+  List<String> times = [
+    "10:00 AM",
+    "12:00 PM",
+    "01:00 PM",
+    "02:00 PM",
+    "03:00 PM",
+    "04:00 PM",
+    "05:00 PM"
+  ];
   List<Map<String, dynamic>> ratings = [
     {"value": "5.0"},
     {"value": "4.0"},
@@ -32,7 +40,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
       decoration: BoxDecoration(
-        color: Colors.white, // Beige background color
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(25.r)),
       ),
       child: Column(
@@ -50,7 +58,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             ),
           ),
           SizedBox(height: 20.h),
-
           // Ratings Section
           Text(
             "Ratings",
@@ -68,7 +75,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               return InkWell(
                 onTap: () {
                   setState(() {
-                    _selectedRating = rating["value"];
+                    _selectedRating = isSelected ? null : rating["value"];
                   });
                 },
                 child: Container(
@@ -100,7 +107,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             }).toList(),
           ),
           SizedBox(height: 20.h),
-
           // Price Range Section
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -131,21 +137,20 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               ),
             ],
           ),
-
           SliderTheme(
             data: SliderThemeData(
               showValueIndicator: ShowValueIndicator.onlyForContinuous,
-              activeTrackColor: const Color(0xFFB39654), // Golden color
+              activeTrackColor: const Color(0xFFB39654),
               inactiveTrackColor: Colors.grey.shade300,
               thumbColor: Colors.white,
               overlayColor: const Color(0xffEDEDED),
-              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 50.r),
+              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 10.r),
               trackHeight: 8.h,
             ),
             child: RangeSlider(
               values: _priceRange,
-              min: 5, // Start from $5
-              max: 100,
+              min: 5,
+              max: 1000,
               labels: RangeLabels(
                 "\$${_priceRange.start.toInt()}",
                 "\$${_priceRange.end.toInt()}",
@@ -165,21 +170,20 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 style: TextStyle(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xffA0A0A0)
+                  color: Color(0xffA0A0A0),
                 ),
               ),
               Text(
-                "\$100",
+                "\$1000",
                 style: TextStyle(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w500,
-                  color:  Color(0xffA0A0A0),
+                  color: Color(0xffA0A0A0),
                 ),
               ),
             ],
           ),
           SizedBox(height: 20.h),
-
           // Gender Section
           Text(
             "Gender",
@@ -203,29 +207,28 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                     });
                   },
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                    decoration: BoxDecoration(
-                      color: isSelected ? boxColor : Colors.white,
-                      borderRadius: BorderRadius.circular(20.r),
-                      border: Border.all(
-                        color: isSelected ? borderColor.withAlpha(100) : Color(0xffE0E0E0),
-                      ),
-                    ),
-                    child: Text(
-                      gender,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
+                      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                      decoration: BoxDecoration(
+                          color: isSelected ? boxColor : Colors.white,
+                          borderRadius: BorderRadius.circular(20.r),
+                          border: Border.all(
+                      color: isSelected ? borderColor.withAlpha(100) : Color(0xffE0E0E0),
                 ),
+              ),
+              child: Text(
+              gender,
+              style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w500,
+              color: Colors.black87,
+              ),
+              ),
+              ),
+              ),
               );
             }).toList(),
           ),
           SizedBox(height: 20.h),
-
           // Availability Section
           Text(
             "Availability",
@@ -244,7 +247,11 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               return InkWell(
                 onTap: () {
                   setState(() {
-                    isSelected ? selectedTimes.remove(time) : selectedTimes.add(time);
+                    if (isSelected) {
+                      selectedTimes.remove(time);
+                    } else {
+                      selectedTimes.add(time);
+                    }
                   });
                 },
                 child: Container(
@@ -269,7 +276,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             }).toList(),
           ),
           SizedBox(height: 20.h),
-
           // Reset & Apply Buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -279,7 +285,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 child: TextButton(
                   onPressed: () {
                     setState(() {
-                      _priceRange = const RangeValues(5, 50); // Reset to start from $5
+                      _priceRange = const RangeValues(5, 50);
                       _selectedGender = "Any";
                       _selectedRating = null;
                       selectedTimes.clear();
@@ -299,9 +305,19 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 ),
               ),
               Expanded(
-                child: CustomGradientButton(text:"Apply", onPressed: (){
-                  Get.back();}),
-              )
+                child: CustomGradientButton(
+                  text: "Apply",
+                  onPressed: () {
+                    Get.back(result: {
+                      'rating': _selectedRating != null ? double.parse(_selectedRating!) : null,
+                      'minPrice': _priceRange.start,
+                      'maxPrice': _priceRange.end,
+                      'gender': _selectedGender,
+                      'availability': selectedTimes.isNotEmpty ? selectedTimes[0] : null,
+                    });
+                  },
+                ),
+              ),
             ],
           ),
         ],

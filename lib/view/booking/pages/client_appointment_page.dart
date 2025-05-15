@@ -18,6 +18,7 @@ import '../../widgets/payment_options_sheet.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:toastification/toastification.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
 
 class AppointmentScreen extends StatefulWidget {
   const AppointmentScreen({super.key});
@@ -48,38 +49,122 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   bool isLoading = true;
   String? errorMessage;
 
+  // Utility to clean special characters
+  String _cleanString(String input) {
+    return input
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u200B', '')
+        .replaceAll('\u202F', ' ')
+        .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ');
+  }
+
   @override
   void initState() {
     super.initState();
-    fetchMassageTypes();
-    final String? massageType = Get.arguments?['massageType'];
-    if (massageType != null) {
-      _selectedMessageType = massageType;
+    // Handle arguments from TherapistProfileScreen
+    final arguments = Get.arguments as Map<String, dynamic>?;
+    AppLogger.debug('AppointmentScreen Arguments: $arguments');
+    String? therapistRole;
+    if (arguments != null && arguments.containsKey('therapist')) {
+      final therapistData = arguments['therapist'] as Map<String, dynamic>;
+      AppLogger.debug('Therapist Data: $therapistData');
+      try {
+        _selectedTherapist = Therapist.fromJson(therapistData);
+        therapistRole = therapistData['role'] as String? ?? 'Swedish Massage';
+        AppLogger.debug('Therapist Role: $therapistRole');
+        AppLogger.debug('Selected Therapist: ${_selectedTherapist?.toJson()}');
+      } catch (e) {
+        AppLogger.error('Error creating Therapist: $e');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          CustomSnackBar.show(
+            context,
+            'Failed to load therapist data: $e',
+            type: ToastificationType.error,
+          );
+        });
+      }
     }
+    fetchMassageTypes(therapistRole: therapistRole);
   }
 
-  Future<void> fetchMassageTypes() async {
+  Future<void> fetchMassageTypes({String? therapistRole}) async {
     try {
       final massageTypes = await apiService.getMassageTypes();
+      AppLogger.debug('Massage Types API Response: $massageTypes');
       setState(() {
         messageTypes = massageTypes
             .where((type) => type['is_active'] == true)
-            .map((type) => {
-          'title': type['name'] as String,
-          'image': type['image'].startsWith('/media')
+            .map((type) => <String, dynamic>{
+          'title': _cleanString(type['name'] as String),
+          'image': type['image'].startsWith('/media') ||
+              type['image'].startsWith('/client/media')
               ? '${ApiService.baseUrl}${type['image']}'
               : type['image'] as String,
         })
             .toList();
         isLoading = false;
+        // Auto-select massage type based on therapistRole
+        if (therapistRole != null) {
+          final matchingType = messageTypes.firstWhere(
+                (type) => type['title'].toLowerCase().contains(therapistRole.toLowerCase()),
+            orElse: () => messageTypes.isNotEmpty
+                ? messageTypes[0]
+                : <String, dynamic>{
+              'title': 'Swedish Massage',
+              'image': '${ApiService.baseUrl}/media/documents/default2.jpg'
+            },
+          );
+          _selectedMessageType = matchingType['title'] as String;
+          AppLogger.debug('Auto-selected Massage Type: $_selectedMessageType');
+        } else if (messageTypes.isNotEmpty) {
+          _selectedMessageType = messageTypes[0]['title'] as String;
+        }
+        AppLogger.debug('Message Types: $messageTypes');
       });
     } catch (e) {
+      AppLogger.error('Fetch Massage Types Error: $e');
+      String detailedError = e.toString();
+      if (e is NetworkException) {
+        detailedError = 'Network error: Please check your internet connection.';
+      } else if (e is UnauthorizedException) {
+        detailedError = 'Authentication failed: Please log in again.';
+      } else if (e is ServerException) {
+        detailedError = 'Server error: Please try again later.';
+      }
       setState(() {
-        errorMessage = e.toString().contains('NetworkException')
-            ? 'No internet connection. Please check your network.'
-            : 'Failed to load massage types: $e';
+        messageTypes = messageTypes.isNotEmpty
+            ? messageTypes
+            : [
+          <String, dynamic>{
+            'title': 'Swedish Massage',
+            'image': '${ApiService.baseUrl}/media/documents/default2.jpg'
+          },
+        ];
+        if (therapistRole != null &&
+            !messageTypes.any((type) => type['title'].toLowerCase().contains(therapistRole.toLowerCase()))) {
+          messageTypes.add(<String, dynamic>{
+            'title': therapistRole,
+            'image': '${ApiService.baseUrl}/media/documents/default2.jpg'
+          });
+          _selectedMessageType = therapistRole;
+        } else if (messageTypes.isNotEmpty && _selectedMessageType.isEmpty) {
+          _selectedMessageType = messageTypes[0]['title'] as String;
+        }
+        errorMessage = detailedError;
         isLoading = false;
+        AppLogger.debug('Fallback Message Types: $messageTypes');
+        AppLogger.debug('Selected Message Type: $_selectedMessageType');
       });
+      if (e is! TypeError) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          AppLogger.debug('Showing Error SnackBar with Retry');
+          CustomSnackBar.show(
+            context,
+            errorMessage!,
+            type: ToastificationType.error,
+          );
+        });
+      }
     }
   }
 
@@ -94,7 +179,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Select Therapist', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
+              Text('Select Therapist',
+                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
               SizedBox(height: 16.h),
               SizedBox(
                 height: 300.h,
@@ -114,7 +200,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         ),
                       );
                     } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return Center(child: Text('No therapists available for $_selectedMessageType', style: TextStyle(fontSize: 14.sp)));
+                      return Center(
+                          child: Text('No therapists available for $_selectedMessageType',
+                              style: TextStyle(fontSize: 14.sp)));
                     }
 
                     final therapists = snapshot.data!.map((json) => Therapist.fromJson(json)).toList();
@@ -127,7 +215,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           leading: CircleAvatar(
                             backgroundImage: CachedNetworkImageProvider(therapist.image),
                             radius: 20.r,
-                            onBackgroundImageError: (_, __) => const Icon(Icons.person, color: Colors.grey),
+                            onBackgroundImageError: (_, stackTrace) {
+                              AppLogger.error('Therapist image error: ${therapist.image}');
+                            },
                           ),
                           title: Text(
                             therapist.name.isNotEmpty ? therapist.name : 'Unknown Therapist',
@@ -165,8 +255,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
   void _showDateTimePickerModal() {
     DateTime selectedDate = DateTime.now();
-    final hourController = TextEditingController(text: (TimeOfDay.now().hourOfPeriod == 0 ? 12 : TimeOfDay.now().hourOfPeriod).toString());
-    final minuteController = TextEditingController(text: TimeOfDay.now().minute.toString().padLeft(2, '0'));
+    final hourController = TextEditingController(
+        text: (TimeOfDay.now().hourOfPeriod == 0 ? 12 : TimeOfDay.now().hourOfPeriod).toString());
+    final minuteController =
+    TextEditingController(text: TimeOfDay.now().minute.toString().padLeft(2, '0'));
     bool isAm = TimeOfDay.now().period == DayPeriod.am;
 
     showDialog(
@@ -188,21 +280,31 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         lastDay: DateTime(2100),
                         focusedDay: selectedDate,
                         selectedDayPredicate: (day) => isSameDay(day, selectedDate),
-                        onDaySelected: (selected, focused) => setModalState(() => selectedDate = selected),
-                        headerStyle: HeaderStyle(formatButtonVisible: false, titleCentered: true, leftChevronIcon: Icon(Icons.chevron_left, color: primaryColor), rightChevronIcon: Icon(Icons.chevron_right, color: primaryColor)),
+                        onDaySelected: (selected, focused) =>
+                            setModalState(() => selectedDate = selected),
+                        headerStyle: HeaderStyle(
+                            formatButtonVisible: false,
+                            titleCentered: true,
+                            leftChevronIcon: Icon(Icons.chevron_left, color: primaryColor),
+                            rightChevronIcon: Icon(Icons.chevron_right, color: primaryColor)),
                         calendarStyle: CalendarStyle(
                           selectedDecoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-                          todayDecoration: BoxDecoration(color: primaryColor.withAlpha(50), shape: BoxShape.circle),
+                          todayDecoration:
+                          BoxDecoration(color: primaryColor.withAlpha(50), shape: BoxShape.circle),
                         ),
                       ),
                       SizedBox(height: 16.h),
-                      Align(alignment: Alignment.centerLeft, child: Text("Time", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w500))),
+                      Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text("Time",
+                              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w500))),
                       SizedBox(height: 8.h),
                       Row(
                         children: [
                           Container(
                             padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 5.h),
-                            decoration: BoxDecoration(color: Color(0xffF0F3F7), borderRadius: BorderRadius.circular(12.r)),
+                            decoration: BoxDecoration(
+                                color: Color(0xffF0F3F7), borderRadius: BorderRadius.circular(12.r)),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -212,7 +314,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                                     controller: hourController,
                                     keyboardType: TextInputType.number,
                                     maxLength: 2,
-                                    decoration: InputDecoration(counterText: '', border: InputBorder.none, isDense: true),
+                                    decoration: InputDecoration(
+                                        counterText: '', border: InputBorder.none, isDense: true),
                                     textAlign: TextAlign.center,
                                     style: TextStyle(fontSize: 16.sp),
                                   ),
@@ -224,7 +327,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                                     controller: minuteController,
                                     keyboardType: TextInputType.number,
                                     maxLength: 2,
-                                    decoration: InputDecoration(counterText: '', border: InputBorder.none, isDense: true),
+                                    decoration: InputDecoration(
+                                        counterText: '', border: InputBorder.none, isDense: true),
                                     textAlign: TextAlign.center,
                                     style: TextStyle(fontSize: 16.sp),
                                   ),
@@ -236,23 +340,36 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           Container(
                             height: 40.h,
                             padding: EdgeInsets.symmetric(horizontal: 3.w),
-                            decoration: BoxDecoration(color: Color(0xffF0F3F7), borderRadius: BorderRadius.circular(12.r)),
+                            decoration: BoxDecoration(
+                                color: Color(0xffF0F3F7), borderRadius: BorderRadius.circular(12.r)),
                             child: Row(
                               children: [
                                 GestureDetector(
                                   onTap: () => setModalState(() => isAm = true),
                                   child: Container(
                                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                                    decoration: BoxDecoration(color: isAm ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(8.r)),
-                                    child: Text("AM", style: TextStyle(fontWeight: FontWeight.w500, color: Colors.black, fontSize: 14.sp)),
+                                    decoration: BoxDecoration(
+                                        color: isAm ? Colors.white : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8.r)),
+                                    child: Text("AM",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.black,
+                                            fontSize: 14.sp)),
                                   ),
                                 ),
                                 GestureDetector(
                                   onTap: () => setModalState(() => isAm = false),
                                   child: Container(
                                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                                    decoration: BoxDecoration(color: !isAm ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(8.r)),
-                                    child: Text("PM", style: TextStyle(fontWeight: FontWeight.w500, color: Colors.black, fontSize: 14.sp)),
+                                    decoration: BoxDecoration(
+                                        color: !isAm ? Colors.white : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8.r)),
+                                    child: Text("PM",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.black,
+                                            fontSize: 14.sp)),
                                   ),
                                 ),
                               ],
@@ -269,11 +386,13 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                               int hour = int.tryParse(hourController.text) ?? 0;
                               int minute = int.tryParse(minuteController.text) ?? 0;
                               if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-                                CustomSnackBar.show(context, "Please enter a valid time", type: ToastificationType.error);
+                                CustomSnackBar.show(context, "Please enter a valid time",
+                                    type: ToastificationType.error);
                                 return;
                               }
                               final convertedHour = isAm ? (hour == 12 ? 0 : hour) : (hour == 12 ? 12 : hour + 12);
-                              final selectedDateTime = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, convertedHour, minute);
+                              final selectedDateTime = DateTime(
+                                  selectedDate.year, selectedDate.month, selectedDate.day, convertedHour, minute);
                               setState(() => _selectedDateTime = selectedDateTime);
                               Navigator.pop(context);
                             },
@@ -305,18 +424,11 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Massage Type', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: Colors.black)),
+                  Text('Massage Type',
+                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: Colors.black)),
                   SizedBox(height: 12.h),
                   isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : errorMessage != null
-                      ? Center(
-                    child: Text(
-                      errorMessage!,
-                      style: TextStyle(fontSize: 14.sp, color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
                       : SizedBox(
                     height: 0.18.sh,
                     child: ListView.builder(
@@ -332,17 +444,32 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                             isSelected: _selectedMessageType == messageType['title'],
                             onTap: () => setState(() {
                               _selectedMessageType = messageType['title']!;
-                              _selectedTherapist = null;
+                              _selectedTherapist = null; // Reset therapist
                             }),
                           ),
                         );
                       },
                     ),
                   ),
-                  _buildCheckboxOption('I am a returning customer', _isReturningCustomer, (value) => setState(() => _isReturningCustomer = value!)),
+                  if (errorMessage != null) ...[
+                    SizedBox(height: 12.h),
+                    Center(
+                      child: Text(
+                        errorMessage!,
+                        style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                  _buildCheckboxOption('I am a returning customer', _isReturningCustomer,
+                          (value) => setState(() => _isReturningCustomer = value!)),
                   SizedBox(height: 12.h),
-                  _buildCheckboxOption('I have my own massage table', _hasOwnMassageTable, (value) => setState(() => _hasOwnMassageTable = value!)),
-                  Padding(padding: const EdgeInsets.only(left: 50), child: Text("\$10 Discount if you have Massage Table", style: TextStyle(fontSize: 10.sp, color: Color(0xff808080)))),
+                  _buildCheckboxOption('I have my own massage table', _hasOwnMassageTable,
+                          (value) => setState(() => _hasOwnMassageTable = value!)),
+                  Padding(
+                      padding: const EdgeInsets.only(left: 50),
+                      child: Text("\$10 Discount if you have Massage Table",
+                          style: TextStyle(fontSize: 10.sp, color: Color(0xff808080)))),
                   SizedBox(height: 5.h),
                 ],
               ),
@@ -354,7 +481,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Select your age range', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                    Text('Select your age range',
+                        style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                     RangeSlider(
                       values: _ageRange,
                       min: 18,
@@ -379,7 +507,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Massage Preference', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Massage Preference',
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 12.h),
                   Row(
                     children: [
@@ -389,21 +518,29 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     ],
                   ),
                   SizedBox(height: 20.h),
-                  Text('Select number of people', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Select number of people',
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 8.h),
                   Row(
                     children: [
-                      IconButton(icon: Icon(Icons.remove_circle_outline, size: 24.sp), onPressed: _numberOfPeople > 1 ? () => setState(() => _numberOfPeople--) : null),
-                      Text('$_numberOfPeople', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
-                      IconButton(icon: Icon(Icons.add_circle_outline, size: 24.sp), onPressed: _numberOfPeople < 5 ? () => setState(() => _numberOfPeople++) : null),
+                      IconButton(
+                          icon: Icon(Icons.remove_circle_outline, size: 24.sp),
+                          onPressed: _numberOfPeople > 1 ? () => setState(() => _numberOfPeople--) : null),
+                      Text('$_numberOfPeople',
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                      IconButton(
+                          icon: Icon(Icons.add_circle_outline, size: 24.sp),
+                          onPressed: _numberOfPeople < 5 ? () => setState(() => _numberOfPeople++) : null),
                     ],
                   ),
                   SizedBox(height: 20.h),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Duration', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
-                      Text(_selectedDuration, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: primaryTextColor)),
+                      Text('Duration',
+                          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                      Text(_selectedDuration,
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: primaryTextColor)),
                     ],
                   ),
                   SizedBox(height: 12.h),
@@ -425,28 +562,37 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       max: 120,
                       divisions: 90,
                       label: _selectedDuration,
-                      onChanged: (value) => setState(() => _selectedDuration = '${value.round()} min'),
+                      onChanged: (value) =>
+                          setState(() => _selectedDuration = '${value.round()} min'),
                     ),
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('30 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
-                      Text('120 min', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
+                      Text('30 min',
+                          style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
+                      Text('120 min',
+                          style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400, color: Colors.grey[600])),
                     ],
                   ),
                   SizedBox(height: 20.h),
-                  Text('Therapist', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Therapist',
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 20.h),
                   InkWell(
                     onTap: _showTherapistDialog,
                     child: Row(
                       children: [
-                        if (_selectedTherapist != null) ...[
+                        if (_selectedTherapist != null &&
+                            _selectedTherapist!.image.isNotEmpty &&
+                            _selectedTherapist!.name.isNotEmpty) ...[
                           CircleAvatar(
                             backgroundImage: CachedNetworkImageProvider(_selectedTherapist!.image),
                             radius: 20.r,
-                            onBackgroundImageError: (_, __) => const Icon(Icons.person, color: Colors.grey),
+                            onBackgroundImageError: (error, stackTrace) {
+                              AppLogger.error(
+                                  'Therapist image load error: ${error.toString()}, URL: ${_selectedTherapist!.image}');
+                            },
                           ),
                           SizedBox(width: 12.w),
                           Column(
@@ -470,12 +616,15 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           const Spacer(),
                         ],
                         if (_selectedTherapist != null)
-                          Text('Change', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w500, fontSize: 16.sp)),
+                          Text('Change',
+                              style: TextStyle(
+                                  color: primaryTextColor, fontWeight: FontWeight.w500, fontSize: 16.sp)),
                       ],
                     ),
                   ),
                   SizedBox(height: 20.h),
-                  Text('Do you want instant appointment?', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400)),
+                  Text('Do you want instant appointment?',
+                      style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w400)),
                   SizedBox(height: 1.h),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -513,7 +662,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                   ),
                   if (_selectedTherapist != null && _isScheduleSelected) ...[
                     SizedBox(height: 20.h),
-                    Text('Date & Time', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                    Text('Date & Time',
+                        style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                     SizedBox(height: 20.h),
                     GestureDetector(
                       onTap: _showDateTimePickerModal,
@@ -521,7 +671,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         child: TextField(
                           readOnly: true,
                           controller: TextEditingController(
-                            text: _selectedDateTime != null ? DateFormat('MMM d, yyyy h:mm a').format(_selectedDateTime!) : null,
+                            text: _selectedDateTime != null
+                                ? DateFormat('MMM d, yyyy h:mm a').format(_selectedDateTime!)
+                                : null,
                           ),
                           decoration: InputDecoration(
                             prefixIcon: Icon(Icons.calendar_month, color: primaryButtonColor),
@@ -529,9 +681,15 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                             hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
                             filled: true,
                             fillColor: textFieldColor,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20.r), borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20.r), borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20.r), borderSide: BorderSide(color: borderColor.withAlpha(40), width: 2.w)),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20.r),
+                                borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20.r),
+                                borderSide: BorderSide(color: borderColor.withAlpha(40), width: 1.5.w)),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20.r),
+                                borderSide: BorderSide(color: borderColor.withAlpha(40), width: 2.w)),
                             contentPadding: EdgeInsets.symmetric(vertical: 16.h),
                           ),
                         ),
@@ -539,7 +697,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     ),
                   ],
                   SizedBox(height: 20.h),
-                  Text('Location', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Location',
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 12.h),
                   Row(
                     children: [
@@ -551,7 +710,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     ],
                   ),
                   SizedBox(height: 20.h),
-                  Text('Location Detail', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                  Text('Location Detail',
+                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
                   SizedBox(height: 12.h),
                   Row(
                     children: [
@@ -596,7 +756,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       text: "Proceed to Pay",
                       onPressed: () async {
                         // Validation
-                        if (_selectedTherapist == null || (_isScheduleSelected && _selectedDateTime == null)) {
+                        if (_selectedTherapist == null ||
+                            (_isScheduleSelected && _selectedDateTime == null)) {
                           CustomSnackBar.show(
                             context,
                             'Please select a therapist and date/time for scheduled appointments',
@@ -621,7 +782,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                         final selectedMessage = messageTypes.firstWhere(
                               (message) => message["title"] == _selectedMessageType,
-                          orElse: () => {"title": "Swedish Massage", "image": "${ApiService.baseUrl}/media/documents/default2.jpg"},
+                          orElse: () => <String, dynamic>{
+                            "title": "Swedish Massage",
+                            "image": "${ApiService.baseUrl}/media/documents/default2.jpg"
+                          },
                         );
 
                         // Handle created_at and date_time
@@ -629,14 +793,14 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                         final createdAt = _isScheduleSelected && _selectedDateTime != null
                             ? _selectedDateTime!
                             : now.add(Duration(minutes: 30));
-                        final dateTime = _isScheduleSelected && _selectedDateTime != null ? _selectedDateTime! : now;
+                        final dateTime = _isScheduleSelected && _selectedDateTime != null
+                            ? _selectedDateTime!
+                            : now;
 
                         // Map massage type to API format
-                        final massageTypeMap = {
-                          'Swedish Massage': 'swedish_massage',
-                          'Deep Tissue Massage': 'deep_tissue',
-                          'Aromatherapy Massage': 'aromatherapy_massage',
-                        };
+                        final massageTypeMap = messageTypes.asMap().map((_, type) => MapEntry(
+                            type['title'],
+                            type['title'].toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^\w_]'), '')));
 
                         // Build payload
                         final payload = {
@@ -653,12 +817,30 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           'parking_type': _parkingSelection ?? 'None',
                           'any_pets': _petsSelection == 'Yes',
                           'massage_type': massageTypeMap[_selectedMessageType] ?? 'swedish_massage',
-                          'preferred_modality': preferences['Preferred Modality']?.isNotEmpty ?? false ? preferences['Preferred Modality'] : null,
-                          'preferred_pressure': preferences['Preferred Pressure']?.isNotEmpty ?? false ? preferences['Preferred Pressure'] : null,
-                          'reason_for_massage': preferences['Reasons for Massage']?.isNotEmpty ?? false ? preferences['Reasons for Massage'] : null,
-                          'moisturizer': preferences['Moisturizer Preferences']?.isNotEmpty ?? false ? preferences['Moisturizer Preferences'] : null,
-                          'coversion_preference': preferences['Conversation Preferences']?.isNotEmpty ?? false ? preferences['Conversation Preferences'] : null,
-                          'pregnancy': preferences['Pregnancy (Female customers)']?.isNotEmpty ?? false ? preferences['Pregnancy (Female customers)'] : null,
+                          'preferred_modality':
+                          preferences['Preferred Modality']?.isNotEmpty ?? false
+                              ? preferences['Preferred Modality']
+                              : null,
+                          'preferred_pressure':
+                          preferences['Preferred Pressure']?.isNotEmpty ?? false
+                              ? preferences['Preferred Pressure']
+                              : null,
+                          'reason_for_massage':
+                          preferences['Reasons for Massage']?.isNotEmpty ?? false
+                              ? preferences['Reasons for Massage']
+                              : null,
+                          'moisturizer':
+                          preferences['Moisturizer Preferences']?.isNotEmpty ?? false
+                              ? preferences['Moisturizer Preferences']
+                              : null,
+                          'coversion_preference':
+                          preferences['Conversation Preferences']?.isNotEmpty ?? false
+                              ? preferences['Conversation Preferences']
+                              : null,
+                          'pregnancy':
+                          preferences['Pregnancy (Female customers)']?.isNotEmpty ?? false
+                              ? preferences['Pregnancy (Female customers)']
+                              : null,
                           'instant_appointment': !_isScheduleSelected,
                           'created_at': createdAt.toUtc().toIso8601String(),
                           'user': int.parse(userId),
@@ -691,13 +873,16 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                               'pets': _petsSelection,
                               'preferences': preferences,
                               'booking_id': response['id'],
+                              'therapist_user_id': _selectedTherapist!.user, // Pass therapist_user_id
+                              'therapist_name': _selectedTherapist!.name, // Pass therapist_name
                             },
                           );
                         } catch (e) {
                           LoadingManager.hideLoading();
                           String errorMessage = 'Failed to create booking: $e';
                           if (e.toString().contains('NetworkException')) {
-                            errorMessage = 'No internet connection. Please check your network and try again.';
+                            errorMessage =
+                            'No internet connection. Please check your network and try again.';
                           } else if (e.toString().contains('Please select a valid age range')) {
                             errorMessage = 'Please select a valid age range.';
                           }
@@ -766,9 +951,12 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20.r),
           color: isSelected ? boxColor : Colors.white,
-          border: Border.all(color: isSelected ? borderColor.withAlpha(100) : Color(0xffE0E0E0)),
+          border: Border.all(
+              color: isSelected ? borderColor.withAlpha(100) : Color(0xffE0E0E0)),
         ),
-        child: Text(title, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500, fontSize: 14.sp)),
+        child: Text(title,
+            style: TextStyle(
+                color: Colors.black, fontWeight: FontWeight.w500, fontSize: 14.sp)),
       ),
     );
   }
@@ -781,17 +969,28 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         decoration: BoxDecoration(
           color: isSelected ? boxColor : Colors.white,
           borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(color: isSelected ? borderColor.withAlpha(100) : Colors.grey.shade300),
+          border: Border.all(
+              color: isSelected ? borderColor.withAlpha(100) : Colors.grey.shade300),
         ),
-        child: Center(child: Text(title, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500, fontSize: 14.sp))),
+        child: Center(
+            child: Text(title,
+                style: TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.w500, fontSize: 14.sp))),
       ),
     );
   }
 
-  Widget _buildDropdownField({required String label, required String? value, required List<String> items, required ValueChanged<String?> onChanged}) {
+  Widget _buildDropdownField(
+      {required String label,
+        required String? value,
+        required List<String> items,
+        required ValueChanged<String?> onChanged}) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8.r)),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8.r)),
       child: DropdownButton<String>(
         value: value,
         hint: Text(label, style: TextStyle(color: Colors.grey, fontSize: 14.sp)),
@@ -799,7 +998,11 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         underline: SizedBox(),
         icon: Icon(Icons.keyboard_arrow_down, size: 16.sp),
         items: items.map((String item) {
-          return DropdownMenuItem<String>(value: item, child: Text(item, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14.sp, color: Colors.black)));
+          return DropdownMenuItem<String>(
+              value: item,
+              child: Text(item,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w500, fontSize: 14.sp, color: Colors.black)));
         }).toList(),
         onChanged: onChanged,
         dropdownColor: Colors.white,
@@ -814,8 +1017,12 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey, fontSize: 14.sp),
         contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r), borderSide: BorderSide(color: Colors.grey.shade300)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r), borderSide: BorderSide(color: Colors.grey.shade300)),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8.r),
+            borderSide: BorderSide(color: Colors.grey.shade300)),
       ),
       keyboardType: TextInputType.number,
     );

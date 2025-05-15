@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:toastification/toastification.dart';
 import '../../../api/api_service.dart';
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/app_logger.dart';
 import '../../widgets/custom_appbar.dart';
@@ -98,16 +98,22 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
       LoadingManager.hideLoading();
 
       String errorMessage = "Failed to verify OTP. Please try again.";
-      if (e is BadRequestException) {
+      if (e is PendingApprovalException) {
         errorMessage = e.message;
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.warning);
+        Get.offAllNamed('/logIn', arguments: {'isTherapist': isTherapist, 'email': email});
+      } else if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is ServerException) {
+        errorMessage = "Server error. Please try again later.";
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+      } else {
+        AppLogger.error("OTP verification error: $e");
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-      AppLogger.error("OTP verification error: $e");
     }
   }
-
   Future<void> handleResendOTP() async {
     if (email!.isEmpty) {
       CustomSnackBar.show(context, "Email not provided", type: ToastificationType.error);

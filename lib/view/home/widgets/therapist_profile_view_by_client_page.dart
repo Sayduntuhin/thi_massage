@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
-
-import '../../client_profile/pages/profile_page.dart';
+import 'package:thi_massage/view/widgets/custom_snackBar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:toastification/toastification.dart';
+import '../../../api/api_service.dart';
 
 class TherapistProfileScreen extends StatefulWidget {
   const TherapistProfileScreen({super.key});
@@ -16,53 +19,120 @@ class TherapistProfileScreen extends StatefulWidget {
 class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
   int tabIndex = 0; // 0 for About, 1 for Reviews
   bool isFavorite = false;
-  bool showAllReviews = false; // Track whether to show all reviews
-  final int initialReviewLimit = 2; // Limit to show initially
+  bool showAllReviews = false;
+  final int initialReviewLimit = 2;
+  final String baseUrl = ApiService.baseUrl;
 
-  // Retrieve name and image from arguments
-  late final String therapistName;
-  late final String therapistImage;
+  // Therapist and reviews data from API response
+  Map<String, dynamic>? therapistData;
+  List<dynamic>? reviews;
+  String? errorMessage;
+  int? therapistId;
+
+  // Utility to clean special characters
+  String _cleanString(String input) {
+    return input
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u200B', '')
+        .replaceAll('\u202F', ' ')
+        .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ');
+  }
 
   @override
   void initState() {
     super.initState();
-    // Get the arguments passed via GetX navigation
     final arguments = Get.arguments as Map<String, dynamic>?;
-    print('Arguments received: $arguments'); // Debug print
-    therapistName = arguments?['name'] ?? 'Mical Martinez'; // Fallback if not provided
-    therapistImage = arguments?['image'] ?? 'assets/images/therapist_man.png'; // Fallback if not provided
-    print('Therapist Name: $therapistName'); // Debug print
-    print('Therapist Image: $therapistImage'); // Debug print
+    AppLogger.debug('TherapistProfileScreen Arguments received: $arguments');
+
+    if (arguments == null || !arguments.containsKey('therapistProfile')) {
+      errorMessage = 'Therapist data not found';
+      therapistData = null;
+      reviews = null;
+      therapistId = null;
+      AppLogger.error('Invalid arguments: Missing therapistProfile key');
+    } else {
+      final therapistProfile = arguments['therapistProfile'] as Map<String, dynamic>?;
+      if (therapistProfile == null || !therapistProfile.containsKey('therapist')) {
+        errorMessage = 'Invalid therapist profile data';
+        therapistData = null;
+        reviews = null;
+        therapistId = null;
+        AppLogger.error('Invalid therapistProfile: Missing therapist key');
+      } else {
+        therapistData = therapistProfile['therapist'] as Map<String, dynamic>?;
+        reviews = therapistProfile['reviews'] as List<dynamic>? ?? [];
+        therapistId = therapistData?['therapist_user_id'] as int?;
+        reviews = reviews?.map((review) {
+          return {
+            ...review,
+            'time_ago': _cleanString(review['time_ago'] as String),
+          };
+        }).toList();
+
+        if (therapistData == null ||
+            !therapistData!.containsKey('name') ||
+            !therapistData!.containsKey('image') ||
+            !therapistData!.containsKey('role') ||
+            (therapistData!['role'] as String?)?.isEmpty == true ||
+            !therapistData!.containsKey('rating') ||
+            !therapistData!.containsKey('sessions') ||
+            !therapistData!.containsKey('joined') ||
+            !therapistData!.containsKey('about')) {
+          errorMessage = 'Invalid therapist data: Missing or empty required fields';
+          therapistData = null;
+          reviews = null;
+          therapistId = null;
+          AppLogger.error('Invalid therapist data: Missing or empty required fields in therapist map');
+        }
+      }
+    }
+
+    AppLogger.debug('Therapist ID: $therapistId');
+    AppLogger.debug('Therapist Data: $therapistData');
+    AppLogger.debug('Reviews: $reviews');
   }
 
   @override
   Widget build(BuildContext context) {
+    if (errorMessage != null || therapistData == null || reviews == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        CustomSnackBar.show(context, errorMessage ?? 'Unknown error', type: ToastificationType.error);
+      });
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => Get.back(),
+          ),
+        ),
+        body: Center(
+          child: Text(
+            errorMessage ?? 'Unknown error',
+            style: TextStyle(color: Colors.red, fontSize: 16.sp),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xffffffff),
       body: Column(
         children: [
           Container(
+            height: 0.5.sh,
             clipBehavior: Clip.hardEdge,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.only(
                 bottomLeft: Radius.circular(24.r),
                 bottomRight: Radius.circular(24.r),
               ),
+              image: const DecorationImage(
+                image: AssetImage("assets/images/img.png"),
+                fit: BoxFit.fill,
+              ),
             ),
             child: Stack(
               children: [
-                Container(
-                  height: 0.45.sh,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: primaryColor,
-                  ),
-                ),
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: CurveShapePainter(),
-                  ),
-                ),
                 SafeArea(
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 12.h),
@@ -90,29 +160,25 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              /// Left side: Text Info
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    /// Rating
                                     Row(
                                       children: [
                                         Icon(Icons.star, size: 16.sp, color: borderColor),
                                         SizedBox(width: 4.w),
                                         Text(
-                                          "4.2",
+                                          therapistData!['rating'].toString(),
                                           style: TextStyle(color: borderColor, fontSize: 14.sp),
                                         ),
                                       ],
                                     ),
                                     SizedBox(height: 6.h),
-
-                                    /// Name (Dynamic)
                                     SizedBox(
                                       width: 0.4.sw,
                                       child: Text(
-                                        therapistName, // Use dynamic name
+                                        therapistData!['name'],
                                         style: TextStyle(
                                           fontSize: 30.sp,
                                           fontWeight: FontWeight.bold,
@@ -121,18 +187,14 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                                         ),
                                       ),
                                     ),
-
-                                    /// Role
                                     Text(
                                       "Therapist",
                                       style: TextStyle(fontSize: 14.sp, color: Colors.white),
                                     ),
-                                    SizedBox(height: 16.h),
-
-                                    /// Sessions Info
+                                    SizedBox(height: 18.h),
                                     Text.rich(
                                       TextSpan(
-                                        text: "102 ",
+                                        text: "${therapistData!['sessions']} ",
                                         style: TextStyle(
                                           fontSize: 45.sp,
                                           fontWeight: FontWeight.bold,
@@ -144,8 +206,13 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                                             style: TextStyle(fontSize: 16.sp),
                                           ),
                                           TextSpan(
-                                            text: "Since 15 Apr, 2022",
-                                            style: TextStyle(fontSize: 12.sp, color: Colors.white70),
+                                            text: therapistData!['joined'],
+                                            style: TextStyle(
+                                              fontSize: 15.sp,
+                                              color: Colors.white70,
+                                              fontWeight: FontWeight.w600,
+                                              fontStyle: FontStyle.italic,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -161,17 +228,19 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                   ),
                 ),
                 Positioned(
-                  top: 120,
-                  bottom: 0,
-                  right: -40,
+                  top: 110,
+                  bottom: 41,
+                  right: 0,
                   left: 160,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(50.r),
-                    child: Image.asset(
-                      therapistImage, // Use dynamic image
-                      fit: BoxFit.cover, // Ensure the image fits properly
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.error, color: Colors.red); // Show error icon if image fails to load
+                    borderRadius: BorderRadius.circular(38.r),
+                    child: CachedNetworkImage(
+                      imageUrl: '$baseUrl${therapistData!['image']}',
+                      fit: BoxFit.fill,
+                      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                      errorWidget: (context, url, error) {
+                        AppLogger.error('Image error: $error, URL: $url');
+                        return const Icon(Icons.error, color: Colors.red);
                       },
                     ),
                   ),
@@ -192,7 +261,6 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Tab buttons
                   Padding(
                     padding: EdgeInsets.only(top: 8.h, bottom: 16.h),
                     child: Row(
@@ -204,29 +272,19 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                       ],
                     ),
                   ),
-
-                  // Tab content
                   Expanded(
-                    child: tabIndex == 0
-                        ? _buildAboutSection()
-                        : _buildReviewsSection(),
+                    child: tabIndex == 0 ? _buildAboutSection() : _buildReviewsSection(),
                   ),
-
-                  // Bottom actions
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.h),
                     child: Row(
                       children: [
-                        // Favorite button
                         Container(
                           width: 50.w,
                           height: 50.h,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.grey.shade300,
-                              width: 1.5,
-                            ),
+                            border: Border.all(color: Colors.grey.shade300, width: 1.5),
                           ),
                           child: IconButton(
                             icon: Icon(
@@ -238,16 +296,33 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                               setState(() {
                                 isFavorite = !isFavorite;
                               });
+                              CustomSnackBar.show(
+                                context,
+                                isFavorite ? 'Added to favorites' : 'Removed from favorites',
+                                type: ToastificationType.success,
+                              );
                             },
                           ),
                         ),
                         SizedBox(width: 16.w),
-
-                        // Book appointment button
                         Expanded(
                           child: CustomGradientButton(
                             text: "Book an Appointment",
-                            onPressed: () {},
+                            onPressed: () {
+                              if (therapistId == null) {
+                                AppLogger.error('Therapist ID not found');
+                                CustomSnackBar.show(
+                                  context,
+                                  'Therapist ID not found',
+                                  type: ToastificationType.error,
+                                );
+                                return;
+                              }
+                              Get.toNamed("/appointmentPage", arguments: {
+                                'therapistId': therapistId,
+                                'therapist': therapistData,
+                              });
+                            },
                           ),
                         ),
                       ],
@@ -268,9 +343,7 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
       onTap: () {
         setState(() {
           tabIndex = index;
-          if (index != 1) {
-            showAllReviews = false; // Reset showAllReviews when switching away from Reviews tab
-          }
+          if (index != 1) showAllReviews = false;
         });
       },
       borderRadius: BorderRadius.circular(20.r),
@@ -303,35 +376,25 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "With 3 years of experience in professional massage therapy, I specialize in relieving stress, reducing muscle tension, and promoting overall well-being. My goal is to provide a relaxing and therapeutic experience tailored to each client's needs. Whether you're looking for deep tissue, Swedish, or a soothing relaxation massage, I ensure a comfortable and rejuvenating session every time. Book a session today and let me help you feel your best!",
+            therapistData!['about'],
             style: TextStyle(fontSize: 14.sp, color: Colors.black87, height: 1.5),
           ),
           SizedBox(height: 24.h),
-
-          // Specialties section
           Text(
             "Specialties",
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 18.sp,
-              color: Colors.black,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18.sp, color: Colors.black),
           ),
           SizedBox(height: 12.h),
           _buildSpecialtiesSection(),
-          SizedBox(height: 24.h),
-
-          // Qualifications section
-          Text(
-            "Qualifications",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16.sp,
-              color: Colors.black,
+          if (therapistData!.containsKey('qualifications') && (therapistData!['qualifications'] as List?)?.isNotEmpty == true) ...[
+            SizedBox(height: 24.h),
+            Text(
+              "Qualifications",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp, color: Colors.black),
             ),
-          ),
-          SizedBox(height: 12.h),
-          _buildQualificationsSection(),
+            SizedBox(height: 12.h),
+            _buildQualificationsSection(),
+          ],
         ],
       ),
     );
@@ -339,19 +402,15 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
 
   Widget _buildSpecialtiesSection() {
     final specialties = [
-      {"name": "Swedish Massage", "highlighted": true},
-      {"name": "Trigger Point Therapy", "highlighted": true},
-      {"name": "Cupping", "highlighted": true},
-      {"name": "Lymphatic Drainage", "highlighted": true},
-      {"name": "Aromatherapy", "highlighted": true},
-      {"name": "+7 more", "highlighted": false},
+      {'name': therapistData!['role'], 'highlighted': true},
+      {'name': '+ More', 'highlighted': false},
     ];
 
     return Wrap(
       spacing: 8.w,
       runSpacing: 8.h,
       children: specialties.map((specialty) {
-        final bool isHighlighted = specialty["highlighted"] as bool;
+        final bool isHighlighted = specialty['highlighted'] as bool;
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 5.h),
           decoration: BoxDecoration(
@@ -363,7 +422,7 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
             borderRadius: BorderRadius.circular(20.r),
           ),
           child: Text(
-            specialty["name"] as String,
+            specialty['name'] as String,
             style: TextStyle(
               fontSize: 14.sp,
               color: isHighlighted ? const Color(0xffB48D3C) : Colors.black87,
@@ -375,7 +434,11 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
   }
 
   Widget _buildQualificationsSection() {
-    final qualifications = ["A.A.S", "BCTMB", "CESI"];
+    final qualifications = therapistData!['qualifications'] as List<dynamic>? ?? [];
+
+    if (qualifications.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Row(
       children: qualifications.map((qualification) {
@@ -389,7 +452,7 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
               borderRadius: BorderRadius.circular(20.r),
             ),
             child: Text(
-              qualification,
+              qualification as String,
               style: TextStyle(fontSize: 14.sp, color: Colors.black87),
             ),
           ),
@@ -399,36 +462,12 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
   }
 
   Widget _buildReviewsSection() {
-    final reviews = [
-      {
-        'name': 'Sarah M.',
-        'rating': 5,
-        'time': '25 mins ago',
-        'review':
-        'Amazing experience! The therapist was professional and very skilled. I felt completely relaxed and refreshed after my session. Will book again!',
-      },
-      {
-        'name': 'David J.',
-        'rating': 4,
-        'time': '2 days ago',
-        'review':
-        'Great massage! The pressure was just right, and the therapist was very polite. Only reason for 4 stars is that they arrived 10 minutes late.',
-      },
-      {
-        'name': 'Jane Cooper',
-        'rating': 5,
-        'time': '2 days ago',
-        'review': 'One of the best massages I\'ve ever had! Highly recommended!',
-      },
-    ];
-
-    // Determine how many reviews to show
-    final displayReviews = showAllReviews ? reviews : reviews.take(initialReviewLimit).toList();
+    final displayReviews = showAllReviews ? reviews! : reviews!.take(initialReviewLimit).toList();
 
     return Column(
       children: [
         Expanded(
-          child: reviews.isEmpty
+          child: reviews!.isEmpty
               ? const Center(
             child: Text(
               "No reviews yet.",
@@ -450,14 +489,19 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                       children: [
                         CircleAvatar(
                           radius: 20.r,
-                          backgroundImage: const AssetImage('assets/images/review_image_one.png'),
+                          backgroundImage: CachedNetworkImageProvider(
+                            '$baseUrl${review['client_image']}',
+                          ),
+                          onBackgroundImageError: (exception, stackTrace) {
+                            AppLogger.error('Review image error: $exception');
+                          },
                         ),
                         SizedBox(width: 12.w),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              review['name'] as String,
+                              review['client_name'],
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp),
                             ),
                             SizedBox(height: 2.h),
@@ -469,28 +513,24 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
                                         (i) => Icon(
                                       Icons.star,
                                       size: 14.sp,
-                                      color: i < (review['rating'] as int)
-                                          ? Colors.amber
-                                          : Colors.grey.shade300,
+                                      color: i < review['rating'] ? Colors.amber : Colors.grey.shade300,
                                     ),
                                   ),
                                 ),
                                 SizedBox(width: 8.w),
                                 Text(
-                                  review['time'] as String,
+                                  review['time_ago'],
                                   style: TextStyle(color: Colors.grey, fontSize: 12.sp),
                                 ),
                               ],
                             ),
                           ],
                         ),
-                        const Spacer(),
-                        const Icon(Icons.more_vert, color: Colors.grey),
                       ],
                     ),
                     SizedBox(height: 8.h),
                     Text(
-                      review['review'] as String,
+                      review['review'],
                       style: TextStyle(fontSize: 14.sp, color: Colors.black87, height: 1.4),
                     ),
                   ],
@@ -499,7 +539,7 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
             },
           ),
         ),
-        if (reviews.isNotEmpty && !showAllReviews && reviews.length > initialReviewLimit)
+        if (reviews!.isNotEmpty && !showAllReviews && reviews!.length > initialReviewLimit)
           Padding(
             padding: EdgeInsets.symmetric(vertical: 8.h),
             child: Center(

@@ -4,7 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/api/api_service.dart';
-import 'package:thi_massage/controller/user_controller.dart';
+import 'package:thi_massage/controller/user_type_controller.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:thi_massage/view/widgets/custom_snackbar.dart';

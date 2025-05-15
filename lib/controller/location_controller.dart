@@ -8,6 +8,9 @@ class LocationController extends GetxController {
   var isLoading = true.obs;
   var hasError = false.obs;
 
+  // Cache for geocoded addresses to avoid redundant API calls
+  final Map<String, String> _addressCache = {};
+
   @override
   void onInit() {
     super.onInit();
@@ -83,6 +86,55 @@ class LocationController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Converts a coordinate string (e.g., "37.421998, -122.084000") to a readable address
+  Future<String> getAddressFromCoordinatesString(String coordinateString) async {
+    // Check cache first
+    if (_addressCache.containsKey(coordinateString)) {
+      AppLogger.debug('Returning cached address for $coordinateString: ${_addressCache[coordinateString]}');
+      return _addressCache[coordinateString]!;
+    }
+
+    try {
+      // Parse the coordinate string
+      final coords = coordinateString.split(',').map((e) => e.trim()).toList();
+      if (coords.length != 2) {
+        AppLogger.error('Invalid coordinate format: $coordinateString');
+        return 'Invalid address';
+      }
+
+      final latitude = double.tryParse(coords[0]);
+      final longitude = double.tryParse(coords[1]);
+      if (latitude == null || longitude == null) {
+        AppLogger.error('Failed to parse coordinates: $coordinateString');
+        return 'Invalid address';
+      }
+
+      // Reverse geocode
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isNotEmpty) {
+        Placemark placemark = placemarks.first;
+        String address = [
+          placemark.street,
+          placemark.locality,
+          placemark.administrativeArea,
+          placemark.postalCode,
+          placemark.country,
+        ].where((e) => e != null && e.isNotEmpty).join(', ');
+
+        final result = address.isNotEmpty ? address : 'Unknown location';
+        _addressCache[coordinateString] = result; // Cache the result
+        AppLogger.debug('Geocoded address for $coordinateString: $result');
+        return result;
+      } else {
+        AppLogger.error('No placemarks found for $coordinateString');
+        return 'Unknown location';
+      }
+    } catch (e) {
+      AppLogger.error('Error geocoding coordinates $coordinateString: $e');
+      return 'Failed to get address';
     }
   }
 }

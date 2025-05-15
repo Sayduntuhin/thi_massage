@@ -61,6 +61,9 @@ dependencies:
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
   web_socket_channel: ^3.0.3
+  connectivity_plus: ^6.1.4
+  intl: ^0.20.2
+
 
 
 dev_dependencies:

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thai Massage</string>
+    <string name="facebook_app_id">1822892828489548</string>
+    <string name="fb_login_protocol_scheme">fb1822892828489548</string>
+    <string name="facebook_client_token">3875dd4d39dc2cd53cf091589655c3e2</string>
+</resources>

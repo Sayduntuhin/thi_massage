@@ -2,23 +2,179 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'dart:async';
 
 import '../../../themes/colors.dart';
+import '../../widgets/app_logger.dart'; // Add this import
 
-class LiveTrackingScreen extends StatelessWidget {
+class LiveTrackingScreen extends StatefulWidget {
   const LiveTrackingScreen({super.key});
+
+  @override
+  State<LiveTrackingScreen> createState() => _LiveTrackingScreenState();
+}
+
+class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
+  final Completer<GoogleMapController> _mapControllerCompleter = Completer<GoogleMapController>();
+  final LatLng _initialPosition = const LatLng(37.42796133580664, -122.085749655962);
+  final LatLng _destinationPosition = const LatLng(37.43796133580664, -122.075749655962); // San Diego position
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  MapType _currentMapType = MapType.normal;
+  bool _showTraffic = false;
+  BitmapDescriptor? _sourceMarkerIcon;
+  BitmapDescriptor? _destinationMarkerIcon;
+
+  @override
+  void initState() {
+    super.initState();
+    _setCustomMarkerIcons();
+    _setMarkersAndPolylines();
+    AppLogger.debug('LiveTrackingScreen initialized');
+  }
+
+  void _setCustomMarkerIcons() async {
+    _sourceMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+    _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+    if (_markers.isNotEmpty) {
+      setState(() {
+        _updateMarkers();
+      });
+    }
+  }
+
+  void _setMarkersAndPolylines() {
+    // Add source marker
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('source_location'),
+        position: _initialPosition,
+        infoWindow: const InfoWindow(
+          title: 'Hamill Ave',
+          snippet: 'Your starting location',
+        ),
+        icon: _sourceMarkerIcon ?? BitmapDescriptor.defaultMarker,
+      ),
+    );
+
+    // Add destination marker
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('destination_location'),
+        position: _destinationPosition,
+        infoWindow: const InfoWindow(
+          title: 'San Diego',
+          snippet: 'Your destination',
+        ),
+        icon: _destinationMarkerIcon ?? BitmapDescriptor.defaultMarker,
+      ),
+    );
+
+    // Add a polyline between source and destination
+    _polylines.add(
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: [_initialPosition, _destinationPosition],
+        color: const Color(0xffB48D3C),
+        width: 5,
+        patterns: [
+          PatternItem.dash(20),
+          PatternItem.gap(10),
+        ],
+      ),
+    );
+  }
+
+  void _updateMarkers() {
+    _markers.clear();
+    _setMarkersAndPolylines();
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    try {
+      _mapControllerCompleter.complete(controller);
+      AppLogger.debug('Google Map created successfully');
+    } catch (e) {
+      AppLogger.error('Error creating Google Map: $e');
+    }
+  }
+
+  void _onMapTypeButtonPressed() {
+    setState(() {
+      _currentMapType = _currentMapType == MapType.normal ? MapType.satellite : MapType.normal;
+    });
+  }
+
+  void _onTrafficButtonPressed() {
+    setState(() {
+      _showTraffic = !_showTraffic;
+    });
+  }
+
+  Future<void> _goToLocation(LatLng position) async {
+    final GoogleMapController controller = await _mapControllerCompleter.future;
+    final CameraPosition newPosition = CameraPosition(
+      target: position,
+      zoom: 15,
+    );
+    await controller.animateCamera(CameraUpdate.newCameraPosition(newPosition));
+  }
+
+  // Show both markers in the camera view
+  Future<void> _zoomToFitMarkers() async {
+    final GoogleMapController controller = await _mapControllerCompleter.future;
+
+    // Calculate bounds that include both markers
+    double minLat = _initialPosition.latitude < _destinationPosition.latitude
+        ? _initialPosition.latitude : _destinationPosition.latitude;
+    double maxLat = _initialPosition.latitude > _destinationPosition.latitude
+        ? _initialPosition.latitude : _destinationPosition.latitude;
+    double minLng = _initialPosition.longitude < _destinationPosition.longitude
+        ? _initialPosition.longitude : _destinationPosition.longitude;
+    double maxLng = _initialPosition.longitude > _destinationPosition.longitude
+        ? _initialPosition.longitude : _destinationPosition.longitude;
+
+    // Add some padding
+    minLat -= 0.01;
+    maxLat += 0.01;
+    minLng -= 0.01;
+    maxLng += 0.01;
+
+    await controller.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50, // Padding
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          /// Background map
+          /// Full-screen map
           SizedBox.expand(
-            child: Image.asset(
-              'assets/images/map.png', // Replace with your map image or real map
-              fit: BoxFit.cover,
+            child: GoogleMap(
+              onMapCreated: _onMapCreated,
+              initialCameraPosition: CameraPosition(
+                target: _initialPosition,
+                zoom: 13,
+              ),
+              markers: _markers,
+              polylines: _polylines,
+              myLocationEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              trafficEnabled: _showTraffic,
+              mapType: _currentMapType,
+              onTap: (LatLng position) {
+                AppLogger.debug('Map tapped at: $position');
+              },
             ),
           ),
 
@@ -27,44 +183,68 @@ class LiveTrackingScreen extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(16.w),
               child: Container(
-                width: 30.w,
-                height: 35.h,
+                  width: 30.w,
+                  height: 35.h,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8.r),
                     boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r)],
                   ),
-                  child: IconButton(onPressed: Get.back, icon:  Icon(Icons.arrow_back_ios,color: primaryColor,))),
+                  child: IconButton(
+                      onPressed: Get.back,
+                      icon: Icon(Icons.arrow_back_ios, color: primaryColor, size: 18)
+                  )
+              ),
             ),
           ),
 
-          /// Source and destination points
+          /// Map control buttons
           Positioned(
-            top: 100.h,
-            left: 40.w,
+            right: 10,
+            top: 100,
             child: Column(
               children: [
-                _mapPin("Hamill Ave"),
-                SizedBox(height: 150.h),
-                _destinationPin("San Diego"),
+                FloatingActionButton(
+                  heroTag: "mapTypeButton",
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: _onMapTypeButtonPressed,
+                  child: Icon(
+                    _currentMapType == MapType.normal
+                        ? Icons.satellite_alt
+                        : Icons.map,
+                    color: primaryColor,
+                    size: 18,
+                  ),
+                ),
+                SizedBox(height: 5.h),
+                FloatingActionButton(
+                  heroTag: "trafficButton",
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: _onTrafficButtonPressed,
+                  child: Icon(
+                    Icons.traffic,
+                    color: _showTraffic ? primaryColor : Colors.grey,
+                    size: 18,
+                  ),
+                ),
+                SizedBox(height: 5.h),
+                FloatingActionButton(
+                  heroTag: "fitButton",
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: _zoomToFitMarkers,
+                  child: Icon(
+                    Icons.fit_screen,
+                    color: primaryColor,
+                    size: 18,
+                  ),
+                ),
               ],
             ),
           ),
 
-          /// Dashed path (mocked line)
-          Positioned(
-            top: 130.h,
-            left: 80.w,
-            child: RotatedBox(
-              quarterTurns: 1,
-              child: Container(
-                width: 180.h,
-                child: CustomPaint(
-                  painter: DottedLinePainter(),
-                ),
-              ),
-            ),
-          ),
 
           /// Navigate button
           Positioned(
@@ -75,7 +255,7 @@ class LiveTrackingScreen extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: () {},
                 icon: Icon(Icons.navigation, color: primaryTextColor),
-                label: Text("Navigate", style: TextStyle(color: primaryTextColor,fontWeight: FontWeight.w600)),
+                label: Text("Navigate", style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   elevation: 3,
@@ -86,7 +266,7 @@ class LiveTrackingScreen extends StatelessWidget {
             ),
           ),
 
-          /// Bottom Card
+          /// Bottom Therapist Card
           Positioned(
             bottom: 150.h,
             left: 0,
@@ -107,7 +287,7 @@ class LiveTrackingScreen extends StatelessWidget {
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r)],
               ),
               child: Padding(
-                padding:  EdgeInsets.only(top: 0.02.sh),
+                padding: EdgeInsets.only(top: 0.02.sh),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,12 +316,13 @@ class LiveTrackingScreen extends StatelessWidget {
                     SvgPicture.asset("assets/svg/chat_white.svg"),
                     SizedBox(width: 12.w),
                     SvgPicture.asset("assets/svg/phone.svg"),
-
                   ],
                 ),
               ),
             ),
           ),
+
+          /// Bottom Info Card
           Positioned(
             bottom: 0,
             left: 0,
@@ -261,23 +442,4 @@ class LiveTrackingScreen extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Dashed line painter (vertical)
-class DottedLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const double dashWidth = 5, dashSpace = 5;
-    double startY = 0;
-    final paint = Paint()
-      ..color = const Color(0xffB48D3C)
-      ..strokeWidth = 2;
-    while (startY < size.width) {
-      canvas.drawLine(Offset(startY, 0), Offset(startY + dashWidth, 0), paint);
-      startY += dashWidth + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

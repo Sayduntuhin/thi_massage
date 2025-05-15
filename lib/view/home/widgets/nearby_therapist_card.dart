@@ -7,6 +7,8 @@ import 'package:get/get.dart';
 import '../../../themes/colors.dart';
 import '../../../api/api_service.dart';
 import '../../widgets/app_logger.dart';
+import '../../widgets/custom_snackBar.dart';
+import 'package:toastification/toastification.dart';
 
 class TherapistCard extends StatelessWidget {
   final String image;
@@ -37,6 +39,7 @@ class TherapistCard extends StatelessWidget {
       },
       borderRadius: BorderRadius.circular(15.r),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Padding(
             padding: EdgeInsets.only(top: 25.h, bottom: 0.h),
@@ -129,7 +132,7 @@ class TherapistCard extends StatelessWidget {
                           ],
                         ),
                         Text(
-                          "Since ${DateTime.now().year}", // Dynamic date for demo
+                          "Since ${DateTime.now().year}",
                           style: TextStyle(
                             fontSize: 10.sp,
                             color: Colors.white,
@@ -145,13 +148,13 @@ class TherapistCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: 5,
+            right: 0,
             bottom: 0,
             child: CachedNetworkImage(
               imageUrl: image,
-              width: 0.4.sw,
+              width: 0.5.sw,
               height: 0.25.sh,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
               errorWidget: (context, url, error) {
                 AppLogger.error('Error loading image: $url, error: $error');
@@ -218,6 +221,7 @@ class TherapistCarousel extends StatefulWidget {
 
 class _TherapistCarouselState extends State<TherapistCarousel> {
   late List<Map<String, dynamic>> _therapists;
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
@@ -230,6 +234,45 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
       };
     }).toList();
     AppLogger.debug('TherapistCarousel initialized with ${_therapists.length} therapists: $_therapists');
+  }
+
+  String _buildImageUrl(String imageUrl) {
+    if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
+      return imageUrl;
+    } else if (imageUrl.startsWith('therapist/media') || imageUrl.startsWith('/media')) {
+      return '${ApiService.baseUrl}/therapist$imageUrl';
+    }
+    AppLogger.error('Invalid image URL: $imageUrl, using fallback');
+    return 'assets/images/default_therapist.png';
+  }
+
+  Future<void> _navigateToTherapistProfile(BuildContext context, int therapistId, String therapistName) async {
+    try {
+      AppLogger.debug('Fetching therapist profile for ID: $therapistId');
+      final therapistProfile = await _apiService.getTherapistProfileforBooking(therapistId);
+      AppLogger.debug('Therapist profile fetched: $therapistProfile');
+      // Add therapistId to therapistProfile
+      final updatedProfile = {
+        ...therapistProfile,
+        'therapist': {
+          ...therapistProfile['therapist'] as Map<String, dynamic>,
+          'therapist_user_id': therapistId,
+        },
+      };
+      Get.toNamed(
+        "/therapistPage",
+        arguments: {
+          'therapistProfile': updatedProfile,
+        },
+      );
+    } catch (e) {
+      AppLogger.error('Error fetching therapist profile for $therapistName: $e');
+      CustomSnackBar.show(
+        context,
+        'Failed to load therapist profile: $e',
+        type: ToastificationType.error,
+      );
+    }
   }
 
   @override
@@ -250,26 +293,25 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
           itemCount: _therapists.length,
           itemBuilder: (context, index, realIndex) {
             final therapist = _therapists[index];
+            final imageUrl = _buildImageUrl(therapist['image_url'] as String? ?? '');
             return TherapistCard(
-              image: therapist['image_url'].startsWith('/media')
-                  ? '${ApiService.baseUrl}${therapist['image_url']}'
-                  : therapist['image_url'],
+              image: imageUrl,
               name: therapist['full_name'] as String? ?? 'Unknown',
               rating: (therapist['average_rating'] as num?)?.toStringAsFixed(1) ?? '0.0',
               bookings: (therapist['total_completed_bookings'] as num?)?.toString() ?? '0',
               isFavorite: therapist['isFavorite'] as bool,
               onTap: () {
-                AppLogger.debug('Navigating to therapistPage for ${therapist['full_name']}');
-                Get.toNamed(
-                  "/therapistPage",
-                  arguments: {
-                    'therapist_user_id': therapist['therapist_user_id'],
-                    'name': therapist['full_name'],
-                    'image': therapist['image_url'].startsWith('/media')
-                        ? '${ApiService.baseUrl}${therapist['image_url']}'
-                        : therapist['image_url'],
-                  },
-                );
+                final therapistId = therapist['therapist_user_id'] as int?;
+                if (therapistId != null) {
+                  _navigateToTherapistProfile(context, therapistId, therapist['full_name'] as String? ?? 'Unknown');
+                } else {
+                  AppLogger.error('Therapist ID is null for ${therapist['full_name']}');
+                  CustomSnackBar.show(
+                    context,
+                    'Therapist ID not found',
+                    type: ToastificationType.error,
+                  );
+                }
               },
               onFavoriteTap: () {
                 setState(() {
@@ -279,11 +321,10 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
             );
           },
           options: CarouselOptions(
-            height: 220.h, // Increased height for better visibility
-            viewportFraction: 0.9, // Slightly larger for better card display
-            enableInfiniteScroll: false, // Disable infinite scroll for clarity
+            viewportFraction: 0.8,
+            enableInfiniteScroll: true,
             autoPlay: false,
-            enlargeCenterPage: false, // Disable enlargement for consistent size
+            enlargeCenterPage: true,
             padEnds: true,
           ),
         ),

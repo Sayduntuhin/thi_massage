@@ -11,6 +11,7 @@ class CustomSnackBar {
       style: ToastificationStyle.flatColored,
       autoCloseDuration: const Duration(seconds: 5),
       alignment: Alignment.topCenter,
+
     );
   }
 }

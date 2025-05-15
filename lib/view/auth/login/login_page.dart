@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
-import 'package:logger/logger.dart';
+import 'package:thi_massage/controller/auth_controller.dart';
+import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:toastification/toastification.dart';
-import '../../../../api/api_service.dart';
-import '../../../../controller/user_controller.dart';
-import '../../../../themes/colors.dart';
+import '../../../api/api_service.dart';
+import '../../../controller/user_type_controller.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_snackbar.dart';
@@ -27,8 +24,20 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final AuthController authController = Get.find<AuthController>();
   bool rememberMe = false;
-  var logger = Logger();
+
+  @override
+  void initState() {
+    super.initState();
+    // Check if user is already logged in
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (authController.isLoggedIn.value) {
+        Get.offAllNamed('/homePage',
+            arguments: {'isTherapist': Get.find<UserTypeController>().isTherapist.value});
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -57,34 +66,30 @@ class _LoginPageState extends State<LoginPage> {
     LoadingManager.showLoading();
 
     try {
-      final apiService = ApiService();
-      final userTypeController = Get.find<UserTypeController>();
-
-      final response = await apiService.login({
-        "email": emailController.text.trim(),
-        "password": passwordController.text.trim(),
-      });
+      final success = await authController.login(
+        emailController.text.trim(),
+        passwordController.text.trim(),
+      );
 
       LoadingManager.hideLoading();
 
-      // Set user role
-      final role = response['profile_data']?['role'] ?? 'client';
-      userTypeController.setUserType(role == 'therapist');
-
-      CustomSnackBar.show(context, "Login successful!",
-          type: ToastificationType.success);
-
-      Get.offAllNamed('/homePage', arguments: {'isTherapist': role == 'therapist'});
+      if (success) {
+        CustomSnackBar.show(context, "Login successful!", type: ToastificationType.success);
+      }
     } catch (e) {
       LoadingManager.hideLoading();
 
       String errorMessage = "Failed to login. Please try again.";
-      if (e is BadRequestException) {
+      if (e is PendingApprovalException) {
+        errorMessage = e.message;
+      } else if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is UnauthorizedException) {
         errorMessage = "Invalid email or password.";
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+      } else {
+        AppLogger.error("Login Unexpected Error: $e");
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
@@ -96,113 +101,38 @@ class _LoginPageState extends State<LoginPage> {
     LoadingManager.showLoading();
 
     try {
-      // Initialize GoogleSignIn with clientId and serverClientId
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
-        clientId: '1048463216573-xyz123.apps.googleusercontent.com',
-        serverClientId: '1048463216573-68qmf5ml28m1f8uol09cstfno4jb33gk.apps.googleusercontent.com',
-      );
-
-      // Sign out to ensure fresh login
-      await googleSignIn.signOut();
-      await FirebaseAuth.instance.signOut();
-      AppLogger.debug('Google Sign-In: Signed out previous sessions');
-
-      // Sign in with Google
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        AppLogger.debug("Google Sign-In: User canceled sign-in");
-        LoadingManager.hideLoading();
-        CustomSnackBar.show(context, "Google Sign-In canceled",
-            type: ToastificationType.warning);
-        return;
-      }
-
-      AppLogger.debug("Google Sign-In: User selected ${googleUser.email}");
-
-      // Get authentication details
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      if (googleAuth.idToken == null) {
-        throw Exception("Google Sign-In: No ID token received");
-      }
-
-      AppLogger.debug("Google Sign-In: ID token received");
-
-      // Create Firebase credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final User? firebaseUser = userCredential.user;
-
-      if (firebaseUser == null) {
-        throw Exception("Google Sign-In: Failed to retrieve Firebase user data");
-      }
-
-      AppLogger.debug("Firebase User: ${firebaseUser.email}, ${firebaseUser.displayName}");
-
-      // Call backend API
-      final apiService = ApiService();
-      final userTypeController = Get.find<UserTypeController>();
-
-      final response = await apiService.socialSignUpSignIn({
-        "email": firebaseUser.email ?? "",
-        "full_name": firebaseUser.displayName ?? "Google User",
-        "role": isTherapist ? "therapist" : "client",
-        "auth_provider": "google",
-      });
-
-      AppLogger.debug('Backend response: $response');
-      AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
-
+      final success = await authController.googleSignIn(isTherapist: isTherapist);
       LoadingManager.hideLoading();
 
-      // Use the role from the backend response
-      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
-      final isTherapistFromResponse = role == 'therapist';
-      AppLogger.debug('Setting userType: $isTherapistFromResponse');
-      userTypeController.setUserType(isTherapistFromResponse);
-
-      CustomSnackBar.show(context, "Google Sign-In successful!",
-          type: ToastificationType.success);
-
-      AppLogger.debug('Navigating to /homePage with isTherapist: $isTherapistFromResponse');
-      Get.offAllNamed('/homePage',
-          arguments: {'isTherapist': isTherapistFromResponse});
+      if (success) {
+        CustomSnackBar.show(context, "Google Sign-In successful!", type: ToastificationType.success);
+      }
     } catch (e) {
       LoadingManager.hideLoading();
 
       String errorMessage = "Failed to sign in with Google. Please try again.";
-      if (e is PlatformException) {
-        AppLogger.error("Google Sign-In PlatformException: Code=${e.code}, Message=${e.message}, Details=${e.details}");
-        if (e.code == 'sign_in_failed') {
-          errorMessage = "Google Sign-In failed. Please check your Google account or app configuration.";
+      if (e is PendingApprovalException) {
+        errorMessage = e.message;
+      } else if (e is PlatformException) {
+        AppLogger.error("Google Sign-In Error: ${e.code} - ${e.message}".toString());
+            if (e.code == 'sign_in_failed') {
+          errorMessage = "Google Sign-In failed. Please check your Google account.";
           if (e.message?.contains('ApiException: 10') == true) {
             errorMessage = "Configuration error: Verify OAuth client ID, SHA-1, and package name in Firebase Console.";
           }
         } else if (e.code == 'network_error') {
-          errorMessage = "Network error. Please check your internet connection.";
-        }
-      } else if (e is FirebaseAuthException) {
-        AppLogger.error("FirebaseAuthException: Code=${e.code}, Message=${e.message}");
-        errorMessage = "Firebase error: ${e.message}";
-        if (e.code == 'account-exists-with-different-credential') {
-          errorMessage = "This email is already registered with another provider.";
-        }
-      } else if (e is BadRequestException) {
-        errorMessage = e.message;
-      } else if (e is NetworkException) {
-        errorMessage = "No internet connection.";
-      } else {
-        AppLogger.error("Google Sign-In Unexpected Error: $e");
+        errorMessage = "Network error. Please check your internet connection.";
       }
-      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+    } else if (e is BadRequestException) {
+    errorMessage = e.message;
+    } else if (e is NetworkException) {
+    errorMessage = "No internet connection.";
+    } else {
+    AppLogger.error("Google Sign-In Unexpected Error: $e");
     }
+    CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
   }
-
+  }
   Future<void> handleFacebookSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
     AppLogger.debug('Facebook Sign-In: isTherapist argument = $isTherapist');
@@ -210,75 +140,19 @@ class _LoginPageState extends State<LoginPage> {
     LoadingManager.showLoading();
 
     try {
-      // Sign in with Facebook
-      final LoginResult result = await FacebookAuth.instance.login(
-        permissions: ['email', 'public_profile'],
-      );
-
-      if (result.status != LoginStatus.success) {
-        LoadingManager.hideLoading();
-        String message;
-        switch (result.status) {
-          case LoginStatus.cancelled:
-            message = "Facebook Sign-In canceled";
-            break;
-          case LoginStatus.failed:
-            message = "Facebook Sign-In failed: ${result.message}";
-            break;
-          default:
-            message = "Unknown error during Facebook Sign-In";
-        }
-        CustomSnackBar.show(context, message, type: ToastificationType.warning);
-        return;
-      }
-
-      // Get user data
-      final userData = await FacebookAuth.instance.getUserData(
-        fields: "email,name",
-      );
-
-      final String? email = userData['email'];
-      final String? fullName = userData['name'];
-
-      if (email == null || fullName == null) {
-        throw Exception("Facebook Sign-In: Failed to retrieve user data");
-      }
-
-      AppLogger.debug("Facebook User: $email, $fullName");
-
-      // Call backend API
-      final apiService = ApiService();
-      final userTypeController = Get.find<UserTypeController>();
-
-      final response = await apiService.socialSignUpSignIn({
-        "email": email,
-        "full_name": fullName,
-        "role": isTherapist ? "therapist" : "client",
-        "auth_provider": "facebook",
-      });
-
-      AppLogger.debug('Backend response: $response');
-      AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
-
+      final success = await authController.facebookSignIn(isTherapist: isTherapist);
       LoadingManager.hideLoading();
 
-      // Use the role from the backend response
-      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
-      final isTherapistFromResponse = role == 'therapist';
-      AppLogger.debug('Setting userType: $isTherapistFromResponse');
-      userTypeController.setUserType(isTherapistFromResponse);
-
-      CustomSnackBar.show(context, "Facebook Sign-In successful!",
-          type: ToastificationType.success);
-
-      AppLogger.debug('Navigating to /homePage with isTherapist: $isTherapistFromResponse');
-      Get.offAllNamed('/homePage',
-          arguments: {'isTherapist': isTherapistFromResponse});
+      if (success) {
+        CustomSnackBar.show(context, "Facebook Sign-In successful!", type: ToastificationType.success);
+      }
     } catch (e) {
       LoadingManager.hideLoading();
 
       String errorMessage = "Failed to sign in with Facebook. Please try again.";
-      if (e is BadRequestException) {
+      if (e is PendingApprovalException) {
+        errorMessage = e.message;
+      } else if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
@@ -288,6 +162,41 @@ class _LoginPageState extends State<LoginPage> {
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
+  /*Future<void> handleAppleSignIn() async {
+    final isTherapist = Get.arguments?['isTherapist'] ?? false;
+    AppLogger.debug('Apple Sign-In: isTherapist argument = $isTherapist');
+
+    LoadingManager.showLoading();
+
+    try {
+      final success = await authController.appleSignIn(isTherapist: isTherapist);
+      LoadingManager.hideLoading();
+
+      if (success) {
+        CustomSnackBar.show(context, "Apple Sign-In successful!",
+            type: ToastificationType.success);
+      }
+    } catch (e) {
+      LoadingManager.hideLoading();
+
+      String errorMessage = "Failed to sign in with Apple. Please try again.";
+      if (e is SignInWithAppleAuthorizationException) {
+        AppLogger.error("Apple Sign-In Exception: Code=${e.code}, Message=${e.message}");
+        if (e.code == AuthorizationErrorCode.canceled) {
+          errorMessage = "Apple Sign-In canceled.";
+        } else if (e.code == AuthorizationErrorCode.failed) {
+          errorMessage = "Apple Sign-In failed. Please check your Apple ID.";
+        }
+      } else if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      } else {
+        AppLogger.error("Apple Sign-In Unexpected Error: $e");
+      }
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
+    }
+  }*/
 
   @override
   Widget build(BuildContext context) {
@@ -404,7 +313,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   SizedBox(width: 20.w),
                   InkWell(
-                    onTap: () => AppLogger.debug("Tap Apple"),
+                    //onTap: handleAppleSignIn,
                     child: Image.asset('assets/images/apple.png', width: 50.w),
                   ),
                 ],

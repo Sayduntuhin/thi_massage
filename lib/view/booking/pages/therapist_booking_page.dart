@@ -3,7 +3,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:thi_massage/view/widgets/custom_appbar.dart';
+import '../../../api/api_service.dart';
+import '../../home/widgets/shimmer_loading_for_therapist_home.dart';
+import '../../widgets/app_logger.dart';
+import '../../widgets/custom_snackbar.dart';
+import 'package:toastification/toastification.dart';
 import '../../../themes/colors.dart';
+import 'dart:convert';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -15,65 +21,116 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  bool _showCalendar = true; // To toggle between Calendar and Requests views
+  bool _showCalendar = true;
+  final ApiService _apiService = ApiService();
+  List<Map<String, dynamic>> _appointmentRequests = [];
+  List<Map<String, dynamic>> _bookings = [];
+  bool _isAppointmentRequestsLoading = true;
+  bool _isBookingsLoading = true;
+  String? _appointmentRequestsErrorMessage;
+  String? _bookingsErrorMessage;
+  final _baseUrl = ApiService.baseUrl;
 
-  final Map<DateTime, List<Map<String, dynamic>>> appointments = {
-    DateTime.utc(2025, 3, 8): [
-      {
-        "name": "Mike Milan",
-        "status": "Completed",
-        "service": "Thai Massage",
-        "time": "12:00 AM",
-        "distance": "3.2 km",
-        "location": "4761 Hamill Avenue, San Diego",
-        "image": "assets/images/profilepic.png"
-      },
-      {
-        "name": "Alexa",
-        "status": "Scheduled",
-        "service": "Thai Massage",
-        "time": "12:00 AM",
-        "distance": "3.2 km",
-        "location": "4761 Hamill Avenue, San Diego",
-        "image": "assets/images/profilepic.png"
-      },
-    ],
-    // Add more dates and data here
-  };
+  @override
+  void initState() {
+    super.initState();
+    _selectedDay = _focusedDay;
+    _fetchAppointmentRequests();
+    _fetchBookingsForDay(_focusedDay);
+  }
 
-  // Sample appointment requests data
-  final List<Map<String, dynamic>> appointmentRequests = [
-    {
-      "name": "John Smith",
-      "service": "Thai Massage",
-      "day": "12",
-      "month": "May",
-      "year": "2025",
-      "time": "10:00 AM",
-      "isFemale": false,
-    },
-    {
-      "name": "Sarah Johnson",
-      "service": "Full Body Massage",
-      "day": "15",
-      "month": "May",
-      "year": "2025",
-      "time": "2:30 PM",
-      "isFemale": true,
-    },
-    {
-      "name": "Robert Lee",
-      "service": "Deep Tissue Massage",
-      "day": "18",
-      "month": "May",
-      "year": "2025",
-      "time": "4:00 PM",
-      "isFemale": false,
-    },
-  ];
+  Future<void> _fetchAppointmentRequests() async {
+    setState(() {
+      _isAppointmentRequestsLoading = true;
+      _appointmentRequestsErrorMessage = null;
+    });
+    try {
+      final requests = await _apiService.getAppointmentRequests();
+      setState(() {
+        _appointmentRequests = requests;
+        _isAppointmentRequestsLoading = false;
+      });
+      AppLogger.debug('Appointment Requests: $requests');
+    } catch (e) {
+      setState(() {
+        _isAppointmentRequestsLoading = false;
+        _appointmentRequestsErrorMessage = 'Failed to load appointment requests: $e';
+      });
+      CustomSnackBar.show(context, _appointmentRequestsErrorMessage!, type: ToastificationType.error);
+      AppLogger.error('Failed to fetch appointment requests: $e');
+    }
+  }
 
-  List<Map<String, dynamic>> getAppointmentsForDay(DateTime day) {
-    return appointments[DateTime.utc(day.year, day.month, day.day)] ?? [];
+  Future<void> _fetchBookingsForDay(DateTime day) async {
+    setState(() {
+      _isBookingsLoading = true;
+      _bookingsErrorMessage = null;
+      _bookings = [];
+    });
+    try {
+      final formattedDate = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final bookings = await _apiService.getBookingsByDate(formattedDate);
+      setState(() {
+        _bookings = bookings.map((booking) {
+          return {
+            'name': booking['client_name'],
+            'status': booking['status'] == 'Accepted' ? 'Scheduled' : booking['status'],
+            'service': booking['service'],
+            'time': booking['time'],
+            'distance': booking['distance'].toString() + ' km',
+            'location': booking['address'],
+            'image': booking['client_image'].startsWith('/')
+                ? '$_baseUrl/therapist${booking['client_image']}'
+                : booking['client_image'],
+          };
+        }).toList();
+        _isBookingsLoading = false;
+      });
+      AppLogger.debug('Bookings for $formattedDate:j');
+
+      AppLogger.debug('Bookings for $formattedDate: $_bookings');
+    } catch (e) {
+      setState(() {
+        _isBookingsLoading = false;
+        _bookingsErrorMessage = 'Failed to load bookings: $e';
+      });
+      CustomSnackBar.show(context, _bookingsErrorMessage!, type: ToastificationType.error);
+      AppLogger.error('Failed to fetch bookings: $e');
+    }
+  }
+
+  Map<String, String> _parseDate(String dateStr) {
+    try {
+      final cleanedDate = dateStr.replaceAll(',', '');
+      final parts = cleanedDate.split(' ');
+      if (parts.length != 3) {
+        throw Exception('Invalid date format: $dateStr');
+      }
+      final day = parts[0];
+      final month = parts[1];
+      final year = parts[2];
+      return {
+        'day': day,
+        'month': month,
+        'year': year,
+      };
+    } catch (e) {
+      AppLogger.error('Failed to parse date: $dateStr, error: $e');
+      final now = DateTime.now();
+      return {
+        'day': now.day.toString(),
+        'month': _monthName(now.month),
+        'year': now.year.toString(),
+      };
+    }
+  }
+
+  String _monthName(int month) {
+    const months = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+    return months[month - 1];
   }
 
   @override
@@ -187,6 +244,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       _selectedDay = selectedDay;
                       _focusedDay = focusedDay;
                     });
+                    _fetchBookingsForDay(selectedDay);
                   },
                   calendarStyle: CalendarStyle(
                     todayDecoration: BoxDecoration(
@@ -221,18 +279,61 @@ class _CalendarPageState extends State<CalendarPage> {
           // Date heading
           if (_selectedDay != null)
             Text(
-              'Thu, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
+              '${_selectedDay!.weekday == 4 ? 'Thu' : 'Other'}, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: primaryTextColor),
             ),
 
           SizedBox(height: 10.h),
 
-          // Appointments list
+          // Bookings list
           Expanded(
-            child: ListView(
-              children: getAppointmentsForDay(_selectedDay ?? DateTime.now()).map((item) {
-                return _appointmentCard(item);
-              }).toList(),
+            child: _isBookingsLoading
+                ? ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 2,
+              itemBuilder: (context, index) => const AppointmentCardShimmer(),
+            )
+                : _bookingsErrorMessage != null
+                ? Center(
+              child: Column(
+                children: [
+                  Text(
+                    _bookingsErrorMessage!,
+                    style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 10.h),
+                  ElevatedButton.icon(
+                    onPressed: () => _fetchBookingsForDay(_selectedDay ?? DateTime.now()),
+                    icon: const Icon(Icons.refresh),
+                    label: Text(
+                      'Retry',
+                      style: TextStyle(fontSize: 14.sp),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+                : _bookings.isEmpty
+                ? Center(
+              child: Text(
+                'No bookings for this date',
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            )
+                : ListView.builder(
+              itemCount: _bookings.length,
+              itemBuilder: (context, index) {
+                return _appointmentCard(_bookings[index]);
+              },
             ),
           )
         ],
@@ -253,18 +354,61 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
           SizedBox(height: 10.h),
           Expanded(
-            child: ListView.builder(
-              itemCount: appointmentRequests.length,
+            child: _isAppointmentRequestsLoading
+                ? ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 2,
+              itemBuilder: (context, index) => const AppointmentRequestCardShimmer(),
+            )
+                : _appointmentRequestsErrorMessage != null
+                ? Center(
+              child: Column(
+                children: [
+                  Text(
+                    _appointmentRequestsErrorMessage!,
+                    style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 10.h),
+                  ElevatedButton.icon(
+                    onPressed: _fetchAppointmentRequests,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(
+                      'Retry',
+                      style: TextStyle(fontSize: 14.sp),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+                : _appointmentRequests.isEmpty
+                ? Center(
+              child: Text(
+                'No appointment requests',
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            )
+                : ListView.builder(
+              itemCount: _appointmentRequests.length,
               itemBuilder: (context, index) {
-                final request = appointmentRequests[index];
+                final request = _appointmentRequests[index];
+                final dateParts = _parseDate(request['date'] ?? 'N/A');
                 return _appointmentRequestCard(
-                  name: request['name'],
-                  service: request['service'],
-                  day: request['day'],
-                  month: request['month'],
-                  year: request['year'],
-                  time: request['time'],
-                  isFemale: request['isFemale'],
+                  name: request['client_name'] ?? 'Unknown',
+                  service: request['specility'] ?? 'N/A',
+                  day: dateParts['day']!,
+                  month: dateParts['month']!,
+                  year: dateParts['year']!,
+                  time: request['time'] ?? 'N/A',
+                  isFemale: request['client_gender'] != 'male',
                 );
               },
             ),
@@ -283,14 +427,6 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
       child: Icon(icon, color: Colors.black),
     );
-  }
-
-  String _monthName(int month) {
-    const months = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-    ];
-    return months[month - 1];
   }
 
   Widget _legend() {
@@ -315,10 +451,10 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _appointmentCard(Map<String, dynamic> item) {
-    final bool isCompleted = item['status'] == "Completed";
+    final bool isCompleted = item['status'] == "Complete";
     return GestureDetector(
       onTap: () {
-        Get.toNamed('/appointmentRequestPage'); // Navigate to appointment details page
+        Get.toNamed('/appointmentRequestPage');
       },
       child: Container(
         margin: EdgeInsets.only(bottom: 10.h),
@@ -331,8 +467,9 @@ class _CalendarPageState extends State<CalendarPage> {
         child: Row(
           children: [
             CircleAvatar(
-              backgroundImage: AssetImage(item['image']),
+              backgroundImage: NetworkImage(item['image']),
               radius: 25.r,
+              onBackgroundImageError: (_, __) => const AssetImage('assets/images/profilepic.png'),
             ),
             SizedBox(width: 10.w),
             Expanded(
@@ -390,7 +527,7 @@ class _CalendarPageState extends State<CalendarPage> {
   }) {
     return GestureDetector(
       onTap: () {
-        Get.toNamed('/appointmentRequestPage'); // Navigate to appointment details page
+        Get.toNamed('/appointmentRequestPage');
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
@@ -411,8 +548,10 @@ class _CalendarPageState extends State<CalendarPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(day,
-                      style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(
+                    day,
+                    style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                   Text(month, style: TextStyle(fontSize: 14.sp, color: Colors.white)),
                   Text(year, style: TextStyle(fontSize: 10.sp, color: Colors.white)),
                 ],
@@ -457,10 +596,18 @@ class _CalendarPageState extends State<CalendarPage> {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              name,
-                              style: TextStyle(
-                                  fontSize: 13.sp, color: Colors.black87, fontWeight: FontWeight.w500),
+                            SizedBox(
+                              width: 0.2.sw,
+                              height: 0.02.sh,
+                              child: Text(
+                                overflow: TextOverflow.ellipsis,
+                                name,
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
                             SizedBox(width: 4.w),
                             Icon(
@@ -470,10 +617,15 @@ class _CalendarPageState extends State<CalendarPage> {
                             ),
                           ],
                         ),
+
                         Row(
                           children: [
                             _statusButton(
-                                "Accept", const Color(0xFFCBF299), const Color(0xff33993A), const Color(0xFFCBF299)),
+                              "Accept",
+                              const Color(0xFFCBF299),
+                              const Color(0xff33993A),
+                              const Color(0xFFCBF299),
+                            ),
                             SizedBox(width: 6.w),
                             _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
                           ],
@@ -490,17 +642,17 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _statusButton(String text, Color bgColor, Color textColor, Color borderColor) {
+  Widget _statusButton(String label, Color color, Color textcolor, Color borderColor) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 3.h),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: color,
         borderRadius: BorderRadius.circular(12.r),
         border: Border.all(color: borderColor),
       ),
       child: Text(
-        text,
-        style: TextStyle(color: textColor, fontSize: 10.sp, fontWeight: FontWeight.w500),
+        label,
+        style: TextStyle(color: textcolor, fontSize: 12.sp, fontWeight: FontWeight.w500),
       ),
     );
   }

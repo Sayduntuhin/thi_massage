@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 import '../../../themes/colors.dart';
-import '../../../routers/app_router.dart'; // Import your app router for route names
+import '../../../routers/app_router.dart';
 
-// Chat List Screen
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
 
@@ -14,9 +12,8 @@ class ChatListScreen extends StatefulWidget {
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProviderStateMixin {
+class _ChatListScreenState extends State<ChatListScreen> {
   final UserTypeController userTypeController = Get.find<UserTypeController>();
-  late TabController _tabController;
 
   final List<Map<String, dynamic>> _chatList = [
     {
@@ -24,36 +21,30 @@ class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProvid
       'lastMessage': 'Hi, David. Hope you\'re doing...',
       'date': '19 feb',
       'image': 'assets/images/fevTherapist1.png',
-      'unreadCount': 2, // Add unread message count
+      'unreadCount': 2,
     },
     {
       'name': 'Sara Johnson',
       'lastMessage': 'Hi, David. Hope you\'re doing...',
       'date': '18 feb',
       'image': 'assets/images/fevTherapist2.png',
-      'unreadCount': 0, // No unread messages
+      'unreadCount': 0,
     },
     {
       'name': 'Shakil Khan',
       'lastMessage': 'Hi, David. Hope you\'re doing...',
       'date': '17 feb',
       'image': 'assets/images/fevTherapist3.png',
-      'unreadCount': 5, // 5 unread messages
+      'unreadCount': 5,
     },
     {
       'name': 'Bijoy Khan',
       'lastMessage': 'Hi, David. Hope you\'re doing...',
       'date': '16 feb',
       'image': 'assets/images/fevTherapist4.png',
-      'unreadCount': 1, // 1 unread message
+      'unreadCount': 1,
     },
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,9 +68,9 @@ class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProvid
             padding: const EdgeInsets.all(15),
             child: TextField(
               decoration: InputDecoration(
-                prefixIcon: Icon(
+                prefixIcon: const Icon(
                   Icons.search,
-                  color: const Color(0xff606060),
+                  color: Color(0xff606060),
                 ),
                 hintText: "Search",
                 hintStyle: TextStyle(
@@ -87,7 +78,7 @@ class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProvid
                   color: Colors.black54,
                 ),
                 filled: true,
-                fillColor: textFieldColor, // Background color
+                fillColor: textFieldColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20.r),
                   borderSide: BorderSide(
@@ -113,29 +104,8 @@ class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProvid
               ),
             ),
           ),
-          TabBar(
-            controller: _tabController,
-            labelColor: primaryTextColor,
-            unselectedLabelColor: secounderyTextColor,
-            indicatorColor: primaryTextColor,
-            indicatorWeight: 2.5,
-            labelStyle: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14.sp,
-            ),
-            tabs: const [
-              Tab(text: "Chats"),
-              Tab(text: "Calls"),
-            ],
-          ),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _chatListView(),
-                const Center(child: Text("Calls")),
-              ],
-            ),
+            child: _chatListView(),
           ),
         ],
       ),
@@ -155,7 +125,7 @@ class _ChatListScreenState extends State<ChatListScreen> with SingleTickerProvid
             });
             // Navigate to ChatDetailScreen with image and name
             Get.toNamed(
-              Routes.chatDetailsPage, // Use the route name defined in app_router.dart
+              Routes.chatDetailsPage,
               arguments: {
                 'image': chat['image'],
                 'name': chat['name'],

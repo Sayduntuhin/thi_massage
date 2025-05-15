@@ -50,6 +50,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
   bool isLoading = false;
 
   final _storage = const FlutterSecureStorage();
+  final ApiService _apiService = Get.find<ApiService>();
 
   @override
   void initState() {
@@ -72,33 +73,20 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
 
     if (userId == null) {
       CustomSnackBar.show(context, "User ID missing. Please log in again.", type: ToastificationType.error);
-      Get.offAllNamed('/login');
+      Get.offAllNamed('/logIn');
       return;
     }
 
-    //fetchProfileData();
+    await fetchProfileData();
   }
 
-  @override
-  void dispose() {
-    firstNameController.dispose();
-    lastNameController.dispose();
-    emailController.dispose();
-    contactController.dispose();
-    dobController.dispose();
-    aboutController.dispose();
-    experienceController.dispose();
-    super.dispose();
-  }
-
-/*  Future<void> fetchProfileData() async {
+  Future<void> fetchProfileData() async {
     setState(() {
       isLoading = true;
     });
 
     try {
-      final apiService = ApiService();
-      final response = await apiService.getTherapistProfile(userId!);
+      final response = await _apiService.getTherapistOwnProfile();
       AppLogger.debug("Profile fetched: $response");
 
       setState(() {
@@ -110,27 +98,27 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         contactController.text = response['phone'] ?? '';
         dobController.text = response['date_of_birth'] ?? '';
         aboutController.text = response['about'] ?? '';
-        experienceController.text = response['experience'] ?? '';
+        experienceController.text = response['experience']?.toString() ?? '';
 
         // Parse techniques
         if (response['techniques'] != null && response['techniques'] is List) {
           selectedTechniques = List<String>.from(response['techniques']);
+        } else {
+          selectedTechniques = [];
         }
 
-        _imageUrl = response['image'] != '/media/documents/default.jpg' ? response['image'] : null;
-        // Adjust image URL if backend doesn't include /api/
-        if (_imageUrl != null && !_imageUrl!.startsWith('/api/')) {
-          _imageUrl = '/api$_imageUrl';
-        }
+        _imageUrl = response['image'] != null && response['image'] != '/media/documents/default.jpg'
+            ? response['image']
+            : null;
         profileId = response['id'];
-        AppLogger.debug("Image URL set: ${ApiService.baseUrl}$_imageUrl");
+        AppLogger.debug("Image URL set: $_imageUrl");
       });
     } catch (e) {
-      String errorMessage = "Failed to fetch client_profile. Please try again.";
+      String errorMessage = "Failed to fetch profile. Please try again.";
       if (e is NotFoundException) {
-        errorMessage = "Profile not found. Please set up your client_profile.";
+        errorMessage = "Profile not found. Please set up your profile.";
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-        Get.toNamed('/therapistProfileSetup', arguments: {
+        Get.toNamed('/profileSetup', arguments: {
           'user_id': userId,
           'profile_id': profileId,
           'source': 'edit_profile',
@@ -141,16 +129,16 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         errorMessage = "No internet connection.";
       } else if (e is UnauthorizedException) {
         errorMessage = "Authentication failed. Please log in again.";
-        Get.offAllNamed('/login');
+        Get.offAllNamed('/logIn');
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-      AppLogger.error("Fetch client_profile error: $e");
+      AppLogger.error("Fetch profile error: $e");
     } finally {
       setState(() {
         isLoading = false;
       });
     }
-  }*/
+  }
 
   Future<void> _pickImage() async {
     try {
@@ -167,9 +155,9 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
     }
   }
 
- /* Future<void> _saveProfile() async {
+  Future<void> _saveProfile() async {
     if (userId == null || profileId == null) {
-      CustomSnackBar.show(context, "User or client_profile data missing", type: ToastificationType.error);
+      CustomSnackBar.show(context, "User or profile data missing", type: ToastificationType.error);
       return;
     }
 
@@ -178,16 +166,16 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
     });
 
     try {
-      final apiService = ApiService();
       final fullName = "${firstNameController.text.trim()} ${lastNameController.text.trim()}".trim();
-      await apiService.updateTherapistProfile(
-        userId!,
+      await _apiService.updateTherapistProfile(
+        userId: userId!,
         profileId: profileId!,
         image: _image,
+        fullName: fullName.isNotEmpty ? fullName : null,
         phone: contactController.text.trim().isNotEmpty ? contactController.text.trim() : null,
         dateOfBirth: dobController.text.trim().isNotEmpty ? dobController.text.trim() : null,
         about: aboutController.text.trim().isNotEmpty ? aboutController.text.trim() : null,
-        experience: experienceController.text.trim().isNotEmpty ? experienceController.text.trim() : null,
+        experience: experienceController.text.trim().isNotEmpty ? int.tryParse(experienceController.text.trim()) : null,
         techniques: selectedTechniques.isNotEmpty ? selectedTechniques : null,
       );
 
@@ -196,16 +184,16 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
       setState(() {
         isEditing = false; // Exit edit mode
       });
-      await fetchProfileData(); // Refresh client_profile data
+      await fetchProfileData(); // Refresh profile data
     } catch (e) {
-      String errorMessage = "Failed to update client_profile. Please try again.";
+      String errorMessage = "Failed to update profile. Please try again.";
       if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
       } else if (e is UnauthorizedException) {
         errorMessage = "Authentication failed. Please log in again.";
-        Get.offAllNamed('/login');
+        Get.offAllNamed('/logIn');
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       AppLogger.error("Profile update error: $e");
@@ -214,7 +202,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         isLoading = false;
       });
     }
-  }*/
+  }
 
   void _toggleTechnique(String technique) {
     setState(() {
@@ -227,9 +215,21 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
   }
 
   @override
+  void dispose() {
+    firstNameController.dispose();
+    lastNameController.dispose();
+    emailController.dispose();
+    contactController.dispose();
+    dobController.dispose();
+    aboutController.dispose();
+    experienceController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: SecondaryAppBar(title: "Edit Profile",showBackButton: false,),
+      appBar: SecondaryAppBar(title: "Edit Profile", showBackButton: false),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -261,13 +261,14 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
                           image: _image != null
                               ? FileImage(_image!)
                               : _imageUrl != null
-                              ? NetworkImage('${ApiService.baseUrl}$_imageUrl')
-                              : AssetImage("assets/images/empty_person.png") as ImageProvider,
+                              ? NetworkImage(_imageUrl!)
+                              : const AssetImage("assets/images/empty_person.png")
+                          as ImageProvider,
                           fit: BoxFit.cover,
                           width: 100.r,
                           height: 100.r,
                           errorBuilder: (context, error, stackTrace) {
-                            AppLogger.error("Failed to load image: ${ApiService.baseUrl}$_imageUrl, Error: $error");
+                            AppLogger.error("Failed to load image: $_imageUrl, Error: $error");
                             setState(() {
                               _imageUrl = null; // Clear invalid URL
                             });
@@ -301,7 +302,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
 
               // Profile Section
               _buildSectionTitle("Profile"),
-              Divider(color: Color(0xffD0D0D0)),
+              const Divider(color: Color(0xffD0D0D0)),
               SizedBox(height: 8.h),
               _buildProfileField("First name", firstNameController, isEditing),
               _buildProfileField("Last name", lastNameController, isEditing),
@@ -313,7 +314,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
 
               // Account Settings Section
               _buildSectionTitle("Account Settings"),
-              Divider(color: Color(0xffD0D0D0)),
+              const Divider(color: Color(0xffD0D0D0)),
               SizedBox(height: 8.h),
               _buildLabelText("About"),
               isEditing
@@ -329,7 +330,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : null,
+                    onPressed: isLoading ? null : _saveProfile,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryButtonColor,
                       padding: EdgeInsets.symmetric(vertical: 15.h),
@@ -377,6 +378,9 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
             onPressed: () {
               setState(() {
                 isEditing = !isEditing;
+                if (!isEditing) {
+                  _saveProfile(); // Save when exiting edit mode
+                }
               });
             },
           ),
@@ -396,7 +400,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
             style: TextStyle(
               fontSize: 18.sp,
               fontWeight: FontWeight.w500,
-              color: Color(0xff383535),
+              color: const Color(0xff383535),
             ),
           ),
           SizedBox(
@@ -409,18 +413,18 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
               textAlign: TextAlign.right,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Color(0xFFE8ECEF),
+                fillColor: const Color(0xFFE8ECEF),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 contentPadding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 12.w),
               ),
@@ -450,7 +454,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
             style: TextStyle(
               fontSize: 18.sp,
               fontWeight: FontWeight.w500,
-              color: Color(0xff383535),
+              color: const Color(0xff383535),
             ),
           ),
           SizedBox(
@@ -463,18 +467,18 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
               textAlign: TextAlign.right,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Color(0xFFE8ECEF),
+                fillColor: const Color(0xFFE8ECEF),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.r),
-                  borderSide: BorderSide(color: Colors.black12, width: 1),
+                  borderSide: const BorderSide(color: Colors.black12, width: 1),
                 ),
                 contentPadding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 12.w),
                 suffixText: controller.text.isNotEmpty ? "Years" : "",
@@ -483,7 +487,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
                 : Container(
               padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 16.w),
               decoration: BoxDecoration(
-                color: Color(0xFFE8ECEF),
+                color: const Color(0xFFE8ECEF),
                 borderRadius: BorderRadius.circular(8.r),
               ),
               child: Text(
@@ -508,7 +512,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w500,
-            color: Color(0xff383535),
+            color: const Color(0xff383535),
           ),
         ),
       ),
@@ -524,22 +528,22 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
         style: TextStyle(fontSize: 14.sp, color: Colors.black),
         decoration: InputDecoration(
           filled: true,
-          fillColor: Color(0xFFE8ECEF),
+          fillColor: const Color(0xFFE8ECEF),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8.r),
-            borderSide: BorderSide(color: Colors.black12, width: 1),
+            borderSide: const BorderSide(color: Colors.black12, width: 1),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8.r),
-            borderSide: BorderSide(color: Colors.black12, width: 1),
+            borderSide: const BorderSide(color: Colors.black12, width: 1),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8.r),
-            borderSide: BorderSide(color: Colors.black12, width: 1),
+            borderSide: const BorderSide(color: Colors.black12, width: 1),
           ),
           contentPadding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 12.w),
           hintText: "Tell us about yourself and your massage specialties...",
-          hintStyle: TextStyle(color: Colors.black38),
+          hintStyle: const TextStyle(color: Colors.black38),
         ),
       ),
     );
@@ -551,7 +555,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
       padding: EdgeInsets.all(12.w),
       margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
-        color: Color(0xFFE8ECEF),
+        color: const Color(0xFFE8ECEF),
         borderRadius: BorderRadius.circular(8.r),
       ),
       child: Text(
@@ -569,9 +573,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildLabelText("Techniques"),
-        isEditing
-            ? _buildEditableTechniques()
-            : _buildDisplayTechniques(),
+        isEditing ? _buildEditableTechniques() : _buildDisplayTechniques(),
       ],
     );
   }

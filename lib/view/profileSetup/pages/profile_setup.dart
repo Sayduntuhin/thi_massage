@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:intl/intl.dart';
 import 'package:country_pickers/countries.dart';
 import 'package:country_pickers/utils/utils.dart';
 import 'package:flutter/material.dart';
@@ -6,9 +7,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:toastification/toastification.dart';
-import 'package:intl/intl.dart';
 import '../../../controller/phone_number_controller.dart';
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 import '../../../themes/colors.dart';
 import '../../auth/widgets/customTextField.dart';
 import '../../widgets/app_logger.dart';
@@ -39,6 +39,7 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
   bool isSocialSignUp = false;
   int? userId;
   int? profileId;
+  final userTypeController = Get.find<UserTypeController>();
 
   @override
   void initState() {
@@ -51,6 +52,7 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
     selectedCountryCode = arguments?['country_code'] ?? '+1';
     userId = arguments?['user_id'];
     profileId = arguments?['profile_id'];
+    final isTherapist = arguments?['isTherapist'] ?? userTypeController.isTherapist.value;
     AppLogger.debug(
         "ProfileSetupPage: country_code=$selectedCountryCode, isSocialSignUp=$isSocialSignUp, userId=$userId, profileId=$profileId");
     if (selectedCountryCode != null) {
@@ -221,14 +223,18 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   Future<void> handleSaveAndContinue() async {
-    if (!validateInputs()) return;
+    if (!validateInputs()) {
+      AppLogger.debug("Validation failed in ProfileSetupPage");
+      return;
+    }
 
     LoadingManager.showLoading();
 
     try {
       final apiService = ApiService();
-      final userTypeController = Get.find<UserTypeController>();
-      final isTherapist = Get.arguments?['isTherapist'] ?? false;
+      final isTherapist = Get.arguments?['isTherapist'] ?? userTypeController.isTherapist.value;
+
+      AppLogger.debug("Starting profile setup: userId=$userId, profileId=$profileId, isTherapist=$isTherapist");
 
       final phoneNumber = phoneController.text.trim();
       final fullName = nameController.text.trim();
@@ -239,6 +245,7 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
         fullName: fullName.isNotEmpty ? fullName : null,
         phone: phoneNumber.isNotEmpty ? phoneNumber : null,
         dateOfBirth: dobController.text.trim(),
+        isTherapist: isTherapist,
       );
 
       AppLogger.info("Profile updated: ${response.toString()}");
@@ -249,6 +256,7 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
 
       if (isSocialSignUp && phoneNumber.isNotEmpty) {
         final countryCode = phoneFieldController.getCountryCode();
+        AppLogger.debug("Navigating to /homePage for social sign-up: isTherapist=$isTherapist");
         Get.toNamed(
           '/homePage',
           arguments: {
@@ -263,6 +271,7 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
           },
         );
       } else {
+        AppLogger.debug("Navigating to ${isTherapist ? '/verifyDocumentsPage' : '/homePage'}");
         if (isTherapist) {
           Get.toNamed("/verifyDocumentsPage");
         } else {
@@ -271,7 +280,6 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
       }
     } catch (e) {
       LoadingManager.hideLoading();
-
       String errorMessage = "Failed to update profile. Please try again.";
       if (e is BadRequestException) {
         errorMessage = e.message;
@@ -279,16 +287,17 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
         errorMessage = "No internet connection.";
       } else if (e is UnauthorizedException) {
         errorMessage = "Authentication failed. Please log in again.";
+      } else if (e is ServerException) {
+        errorMessage = "Server error. Please try again later or contact support.";
       }
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       AppLogger.error("Profile update error: $e");
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final UserTypeController userTypeController = Get.find<UserTypeController>();
-
+    AppLogger.debug("Building ProfileSetupPage: isTherapist=${userTypeController.isTherapist.value}");
     return Scaffold(
       body: SingleChildScrollView(
         child: Padding(

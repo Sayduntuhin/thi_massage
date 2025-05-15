@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
@@ -142,8 +143,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         title: Row(
           children: [
             CircleAvatar(
-              backgroundImage: AssetImage(chatImage),
+              radius: 18.r,
+              child: ClipOval(
+                child: chatImage.startsWith('http')
+                    ? CachedNetworkImage(
+                  imageUrl: chatImage,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => const CircularProgressIndicator(),
+                  errorWidget: (context, url, error) => Image.asset(
+                    'assets/images/therapist.png',
+                    fit: BoxFit.cover,
+                  ),
+                )
+                    : Image.asset(
+                  chatImage,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
+
             SizedBox(width: 8.w),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,7 +355,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 children: [
                   CircleAvatar(
                     radius: 18.r,
-                    backgroundImage: AssetImage(chatImage),
+                    child: ClipOval(
+                      child: chatImage.startsWith('http')
+                          ? CachedNetworkImage(
+                        imageUrl: chatImage,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const CircularProgressIndicator(),
+                        errorWidget: (context, url, error) => Image.asset(
+                          'assets/images/therapist.png',
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                          : Image.asset(
+                        chatImage,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                   Positioned(
                     right: 0,

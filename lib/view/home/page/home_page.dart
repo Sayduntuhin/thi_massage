@@ -9,10 +9,10 @@ import 'package:thi_massage/view/chat/pages/chat_list_page.dart';
 import 'package:thi_massage/view/home/page/therapist_home_page.dart';
 import 'package:thi_massage/view/wallet/pages/earning_page.dart';
 import '../../client_profile/pages/profile_page.dart';
-import '../../client_profile/pages/therepist_profile_page.dart';
+import '../../therapist_profile/page/therepist_profile_page.dart';
 import '../../wallet/pages/wallet_page.dart';
 import 'client_homepage.dart';
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
