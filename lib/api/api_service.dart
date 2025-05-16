@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
@@ -2133,6 +2135,298 @@ class ApiService {
     } catch (e) {
       _logger.e('Unexpected Error: $e');
       throw ApiException('Failed to fetch booking details: $e', 0);
+    }
+  }
+ ///-----------------------Get Booking Details by Therapist method-----------------------///
+  Future<Map<String, dynamic>> getBookingDetailsbByTherapist(dynamic bookingId) async {
+    final uri = Uri.parse('$baseUrl/therapist/bookings/$bookingId/');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.i('API Request Get Booking Details: GET $uri');
+      _logger.i('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Booking Details API Response Status: ${response.statusCode}');
+        _logger.i('Booking Details API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.i('Booking details fetched successfully for booking $bookingId: $data');
+          return data;
+        case 400:
+          String errorMessage = 'Invalid booking ID.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Booking not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch booking details: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch booking details: $e', 0);
+    }
+  }
+  ///-----------------------Update Booking Status method-----------------------///
+  Future<Map<String, dynamic>> updateBookingStatus(dynamic bookingId, String status) async {
+    final action = status == 'accepted' ? 'accept_appointment' : 'reject_appointment';
+    final uri = Uri.parse('$baseUrl/therapist/$action/$bookingId/');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.i('API Request Update Booking Status: PATCH $uri');
+      _logger.i('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+    }
+
+    try {
+      final response = await _client.patch(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Update Booking Status API Response Status: ${response.statusCode}');
+        _logger.i('Update Booking Status API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.i('Booking status updated to $status for booking $bookingId: $data');
+          return data;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Booking not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to update booking status: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to update booking status: $e', 0);
+    }
+  }
+  ///-----------------------Get Chat Room method-----------------------///
+  Future<Map<String, dynamic>> initializeChatRoom(Map<String, dynamic>? arguments) async {
+    try {
+      // Get current user ID
+      final userIdStr = await _storage.read(key: 'user_id');
+      if (userIdStr == null) {
+        AppLogger.error('No user ID found in storage');
+        throw UnauthorizedException('Please log in to continue', 401);
+      }
+      final currentUserId = int.tryParse(userIdStr);
+      if (currentUserId == null) {
+        AppLogger.error('Invalid user ID format: $userIdStr');
+        throw BadRequestException('Invalid user ID', 400);
+      }
+
+      // Safely extract targetId
+      int? targetId;
+      if (arguments != null) {
+        AppLogger.debug('Received arguments: $arguments');
+        final therapistId = arguments['therapist_user_id'];
+        final clientId = arguments['client_id'];
+
+        if (therapistId != null) {
+          targetId = therapistId is int
+              ? therapistId
+              : int.tryParse(therapistId.toString());
+        } else if (clientId != null) {
+          targetId = clientId is int
+              ? clientId
+              : int.tryParse(clientId.toString());
+        }
+      } else {
+        AppLogger.error('Arguments are null');
+      }
+
+      if (targetId == null) {
+        AppLogger.error('No valid client or therapist ID provided in arguments: $arguments');
+        throw BadRequestException('Invalid user details', 400);
+      }
+      AppLogger.debug('targetId: $targetId');
+
+      // Call API to get or create chat room
+      final token = await _storage.read(key: 'access_token') ?? '';
+      if (token.isEmpty) {
+        AppLogger.error('No token found in storage');
+        throw UnauthorizedException('Authentication required', 401);
+      }
+
+      final response = await _client.get(
+        Uri.parse('$baseUrl/api/chat/get-or-create-room/$targetId/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Chat Room API Response Status: ${response.statusCode}');
+        _logger.i('Chat Room API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          AppLogger.debug('Chat room response: $data');
+          final chatRoomId = data['id'] as int?;
+          final user1Id = data['user1'] as int?;
+          final user2Id = data['user2'] as int?;
+
+          if (chatRoomId == null || user1Id == null || user2Id == null) {
+            AppLogger.error('Invalid chat room data: $data');
+            throw BadRequestException('Invalid chat room response', 400);
+          }
+
+          return {
+            'chatRoomId': chatRoomId,
+            'user1Id': user1Id,
+            'user2Id': user2Id,
+            'currentUserId': currentUserId,
+            'token': token,
+          };
+        case 400:
+          throw BadRequestException('Invalid request: $responseBody', response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Chat room not found: $responseBody', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to initialize chat room: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to initialize chat room: $e', 0);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchChatInbox() async {
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) {
+      AppLogger.error('No access token found for inbox');
+      throw Exception('Authentication required');
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/chat/inbox/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        AppLogger.debug('Inbox response: $data');
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        AppLogger.error('Failed to fetch inbox: ${response.body}');
+        throw Exception('Failed to fetch inbox: ${response.statusCode}');
+      }
+    } catch (e) {
+      AppLogger.error('Error fetching inbox: $e');
+      throw Exception('Error fetching inbox: $e');
+    }
+  }
+
+  // Fetch message history (used by ChatWebSocketController)
+  Future<List<Map<String, dynamic>>> fetchMessageHistory(int chatRoomId, String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/chat/messages/$chatRoomId/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        AppLogger.debug('Message history response: $data');
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        AppLogger.error('Failed to fetch message history: ${response.body}');
+        throw Exception('Failed to fetch message history: ${response.statusCode}');
+      }
+    } catch (e) {
+      AppLogger.error('Error fetching message history: $e');
+      throw Exception('Error fetching message history: $e');
     }
   }
 }

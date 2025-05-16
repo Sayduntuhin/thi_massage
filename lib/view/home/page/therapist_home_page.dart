@@ -569,7 +569,7 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                                                     color: primaryTextColor,
                                                   ),
                                                 ),
-                                                SizedBox(width: 0.15.sw),
+                                                SizedBox(width: 0.14.sw),
                                                 _isUpdatingAvailability
                                                     ? SizedBox(
                                                   width: 24.w,

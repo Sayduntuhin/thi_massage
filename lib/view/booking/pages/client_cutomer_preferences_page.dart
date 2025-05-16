@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:thi_massage/view/widgets/custom_appbar.dart';
 import '../../../controller/coustomer_preferences_controller.dart';
+import '../../../themes/colors.dart';
 
 class CustomerPreferencesScreen extends StatelessWidget {
   const CustomerPreferencesScreen({super.key});
@@ -10,62 +12,106 @@ class CustomerPreferencesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final CustomerPreferencesController controller = Get.find<CustomerPreferencesController>();
-    final Map<String, dynamic> arguments = Get.arguments as Map<String, dynamic>? ?? {};
-    final Map<String, dynamic> preferencesData = arguments['preferences'] ?? {};
-
-    // Map API keys to display labels
-    final Map<String, String> preferenceMap = {
-      'preferred_modality': 'Preferred Modality',
-      'preferred_pressure': 'Preferred Pressure',
-      'reason_for_massage': 'Reasons for Massage',
-      'moisturizer': 'Moisturizer Preferences',
-      'music_preference': 'Music Preference',
-      'conversation_preference': 'Conversation Preferences',
-      'pregnancy': 'Pregnancy (Female customers)',
-    };
-
-    // Initialize controller with API data
-    preferenceMap.forEach((key, label) {
-      controller.updatePreference(label, preferencesData[key]?.toString() ?? '');
-    });
+    final bool isTherapistMode = Get.arguments != null && Get.arguments['preferences'] != null;
+    AppLogger.info('isTherapistMode: $isTherapistMode');
+    AppLogger.info('Get.arguments: ${Get.arguments}');
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: SecondaryAppBar(title: "Customer Preferences"),
+      appBar: SecondaryAppBar(title: isTherapistMode ? "View Customer Preferences" : "Customer Preferences"),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+          child: isTherapistMode
+              ? FutureBuilder(
+            future: Future(() {
+              print('Manually calling _loadApiPreferences');
+              controller.loadApiPreferences(Get.arguments['preferences']);
+            }),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator());
+              }
+              AppLogger.info('Initial preferences: ${controller.preferences}');
+              return Obx(
+                    () => controller.preferences.values.every((v) => v.isEmpty)
+                    ? Center(
+                  child: Text(
+                    'No preferences available for this customer.',
+                    style: TextStyle(fontSize: 16.sp, color: Colors.black54),
+                  ),
+                )
+                    : buildPreferencesList(context,controller, isTherapistMode),
+              );
+            },
+          )
+              : buildPreferencesList(context,controller, isTherapistMode),
+        ),
+      ),
+    );
+  }
+
+  Widget buildPreferencesList(BuildContext context, CustomerPreferencesController controller, bool isTherapistMode) {
+    return Column(
+      children: [
+        Expanded(
           child: ListView.separated(
-            itemCount: preferenceMap.values.length,
+            itemCount: CustomerPreferencesController.preferenceKeys.length,
             separatorBuilder: (_, __) => SizedBox(height: 24.h),
             itemBuilder: (context, index) {
-              final label = preferenceMap.values.elementAt(index);
+              final preference = CustomerPreferencesController.preferenceKeys[index];
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    label,
+                    preference,
                     style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
                     ),
                   ),
-                  SizedBox(height: 10.h),
+                  SizedBox(height: 8.h),
                   Obx(
-                        () => TextFormField(
-                      initialValue: controller.preferences[label] ?? '',
-                      readOnly: true, // Make fields read-only for therapist view
+                        () => isTherapistMode
+                        ? Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 12.w),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        controller.preferences[preference]?.isNotEmpty == true
+                            ? controller.preferences[preference]!
+                            : 'N/A',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )
+                        : TextFormField(
+                      initialValue: controller.preferences[preference] ?? '',
+                      onChanged: (value) {
+                        controller.updatePreference(preference, value);
+                      },
                       decoration: InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8.h),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
                         enabledBorder: const UnderlineInputBorder(
                           borderSide: BorderSide(color: Colors.black26),
                         ),
-                        focusedBorder: const UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.brown),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: primaryColor),
                         ),
                       ),
                       style: TextStyle(fontSize: 14.sp),
+                      maxLines: 2,
                     ),
                   ),
                 ],
@@ -73,7 +119,33 @@ class CustomerPreferencesScreen extends StatelessWidget {
             },
           ),
         ),
-      ),
+        if (!isTherapistMode)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 10.h),
+            child: Obx(
+                  () => ElevatedButton(
+                onPressed: controller.isLoading.value || controller.preferences.isEmpty
+                    ? null
+                    : () => controller.savePreferences(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  minimumSize: Size(double.infinity, 48.h),
+                ),
+                child: controller.isLoading.value
+                    ? CircularProgressIndicator(color: Colors.white, strokeWidth: 2.w)
+                    : Text(
+                  'Save Preferences',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -8,7 +8,7 @@ import 'package:get/get.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import '../../../controller/location_controller.dart';
-import '../../../controller/user_controller.dart';
+import '../../../controller/user_type_controller.dart';
 import '../../../controller/web_socket_controller.dart';
 import '../../../themes/colors.dart';
 import '../widgets/category_item.dart';
@@ -32,7 +32,7 @@ class HomeContent extends StatefulWidget {
 class _HomeContentState extends State<HomeContent> {
   final LocationController locationController = Get.put(LocationController());
   final WebSocketController webSocketController = Get.put(WebSocketController());
-  final UserController userController = Get.put(UserController()); // Initialize UserController
+  final UserTypeController userController = Get.put(UserTypeController()); // Initialize UserController
   final ApiService apiService = ApiService();
   Map<String, dynamic>? profileData;
   bool isProfileLoading = true;

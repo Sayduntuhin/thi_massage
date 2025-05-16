@@ -5,9 +5,11 @@ import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:intl/intl.dart';
+import '../../../controller/Chat_socket_controller.dart';
 import '../../../models/chat_model.dart';
+import '../../widgets/app_logger.dart';
+import '../../widgets/loading_indicator.dart';
 
-// Chat Detail Screen
 class ChatDetailScreen extends StatefulWidget {
   const ChatDetailScreen({super.key});
 
@@ -18,67 +20,76 @@ class ChatDetailScreen extends StatefulWidget {
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-      id: '1',
-      text: 'Hi, are you available?',
-      isMe: true,
-      timestamp: DateTime(2025, 3, 23, 10, 0),
-    ),
-    ChatMessage(
-      id: '2',
-      text: 'Hello, yes!',
-      isMe: false,
-      timestamp: DateTime(2025, 3, 23, 10, 1),
-    ),
-    ChatMessage(
-      id: '3',
-      text: 'Voice message (0:45)',
-      isMe: true,
-      isVoice: true,
-      timestamp: DateTime(2025, 3, 23, 10, 5),
-    ),
-    ChatMessage(
-      id: '4',
-      text: 'Voice message (0:30)',
-      isMe: false,
-      isVoice: true,
-      timestamp: DateTime(2025, 3, 24, 9, 30),
-    ),
-    ChatMessage(
-      id: '5',
-      text: 'Ok!',
-      isMe: false,
-      timestamp: DateTime(2025, 3, 24, 9, 32),
-    ),
-    ChatMessage(
-      id: '6',
-      text: 'Voice message (0:15)',
-      isMe: true,
-      isVoice: true,
-      timestamp: DateTime(2025, 3, 24, 9, 35),
-    ),
-  ];
-
-  late final String chatImage;
-  late final String chatName;
+  late final String clientImage;
+  late final int? clientId;
+  late final String clientName;
+  late final String therapistImage;
+  late final int? therapistId;
+  late final String therapistName;
+  late final String displayName;
+  late final String displayImage;
+  late final int? displayId;
   bool _isTyping = false;
-  String? _selectedMessageId; // Track the message whose timestamp is visible
+  String? _selectedMessageId;
+  late final ChatWebSocketController _controller;
 
   @override
   void initState() {
     super.initState();
+    final arguments = Get.arguments as Map<String, dynamic>?;
+    AppLogger.debug('ChatDetailScreen arguments: $arguments');
+
+    clientId = arguments?['client_id'] as int?;
+    clientName = arguments?['client_name']?.toString() ?? 'Unknown User';
+    clientImage = arguments?['client_image']?.toString() ?? 'assets/images/therapist.png';
+
+    therapistId = arguments?['therapist_user_id'] as int? ?? 1;
+    therapistName = arguments?['name']?.toString() ?? 'Therapist';
+    therapistImage = arguments?['image']?.toString() ?? 'assets/images/therapist.png';
+
+    if (arguments != null &&
+        (arguments.containsKey('therapist_user_id') ||
+            arguments.containsKey('name') ||
+            arguments.containsKey('image'))) {
+      displayId = therapistId;
+      displayName = therapistName;
+      displayImage = therapistImage;
+      AppLogger.debug('Using therapist details for display');
+    } else if (arguments != null &&
+        (arguments.containsKey('client_id') ||
+            arguments.containsKey('client_name') ||
+            arguments.containsKey('client_image'))) {
+      displayId = clientId;
+      displayName = clientName;
+      displayImage = clientImage;
+      AppLogger.debug('Using client details for display');
+    } else {
+      displayId = null;
+      displayName = 'Unknown User';
+      displayImage = 'assets/images/therapist.png';
+      AppLogger.debug('Using default details for display');
+    }
+
+    AppLogger.debug(
+        'clientImage: $clientImage, clientId: $clientId, clientName: $clientName, '
+            'therapistImage: $therapistImage, therapistId: $therapistId, therapistName: $therapistName, '
+            'displayId: $displayId, displayName: $displayName, displayImage: $displayImage');
+
+    _controller = Get.put(ChatWebSocketController(
+      arguments: arguments,
+      context: context,
+    ));
+
     _messageController.addListener(() {
       setState(() {
         _isTyping = _messageController.text.trim().isNotEmpty;
       });
     });
-    final arguments = Get.arguments as Map<String, dynamic>?;
-    chatImage = arguments?['image'] ?? 'assets/images/therapist.png';
-    chatName = arguments?['name'] ?? 'Unknown User';
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom();
+    _controller.messages.listen((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
     });
   }
 
@@ -114,16 +125,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _toggleTimestamp(String messageId) {
     setState(() {
       if (_selectedMessageId == messageId) {
-        _selectedMessageId = null; // Hide timestamp if the same message is tapped again
+        _selectedMessageId = null;
       } else {
-        _selectedMessageId = messageId; // Show timestamp for the tapped message
+        _selectedMessageId = messageId;
       }
     });
   }
 
   void _hideTimestamp() {
     setState(() {
-      _selectedMessageId = null; // Hide all timestamps
+      _selectedMessageId = null;
     });
   }
 
@@ -145,9 +156,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             CircleAvatar(
               radius: 18.r,
               child: ClipOval(
-                child: chatImage.startsWith('http')
+                child: displayImage.startsWith('http')
                     ? CachedNetworkImage(
-                  imageUrl: chatImage,
+                  imageUrl: displayImage,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => const CircularProgressIndicator(),
                   errorWidget: (context, url, error) => Image.asset(
@@ -156,31 +167,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 )
                     : Image.asset(
-                  chatImage,
+                  displayImage,
                   fit: BoxFit.cover,
                 ),
               ),
             ),
-
             SizedBox(width: 8.w),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  chatName,
+                  displayName,
                   style: TextStyle(
                     color: Colors.black,
                     fontWeight: FontWeight.w600,
                     fontSize: 14.sp,
                   ),
                 ),
-                Text(
-                  "Active now",
+                Obx(() => Text(
+                  _controller.isConnecting.value ? 'Connecting...' : 'Active now',
                   style: TextStyle(
                     fontSize: 11.sp,
-                    color: Colors.green,
+                    color: _controller.isConnecting.value ? Colors.grey : Colors.green,
                   ),
-                ),
+                )),
               ],
             ),
           ],
@@ -192,8 +202,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             child: SvgPicture.asset('assets/svg/phone_with_Color.svg'),
           ),
         ],
-        leading:  Padding(
-          padding: const EdgeInsets.only(left: 10,top: 5,bottom: 5),
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 10, top: 5, bottom: 5),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -217,8 +227,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: _hideTimestamp, // Hide timestamp when tapping outside messages
-              child: _buildMessageList(),
+              onTap: _hideTimestamp,
+              child: Obx(() => _buildMessageList()),
             ),
           ),
           _messageInput(),
@@ -228,17 +238,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Widget _buildMessageList() {
+    AppLogger.debug('Building message list with ${ _controller.messages.length} messages');
     final Map<String, List<ChatMessage>> groupedMessages = {};
 
-    _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final messages = _controller.messages..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    AppLogger.debug('Messages: ${messages.map((m) => {'id': m.id, 'text': m.text, 'isMe': m.isMe, 'timestamp': m.timestamp.toString()}).toList()}');
 
-    for (final message in _messages) {
+    for (final message in messages) {
       final date = _getFormattedDate(message.timestamp);
       if (!groupedMessages.containsKey(date)) {
         groupedMessages[date] = [];
       }
       groupedMessages[date]!.add(message);
     }
+
+    AppLogger.debug('Grouped messages: ${groupedMessages.map((key, value) => MapEntry(key, value.map((m) => {'id': m.id, 'text': m.text}).toList()))}');
 
     final sortedDates = groupedMessages.keys.toList()
       ..sort((a, b) {
@@ -281,6 +295,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   showAvatar: isLastFromSender,
                   timestamp: message.timestamp,
                   messageId: message.id,
+                  status: message.status,
                 );
               }
             }).toList(),
@@ -296,9 +311,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         bool showAvatar = false,
         required DateTime timestamp,
         required String messageId,
+        required MessageStatus status,
       }) {
     final isTimestampVisible = _selectedMessageId == messageId;
-
     if (isMe) {
       return Align(
         alignment: Alignment.centerRight,
@@ -325,9 +340,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         bottomLeft: Radius.circular(16.r),
                       ),
                     ),
-                    child: Text(
-                      text,
-                      style: TextStyle(fontSize: 14.sp),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          text,
+                          style: TextStyle(fontSize: 14.sp),
+                        ),
+                        SizedBox(width: 8.w),
+                        _buildStatusIndicator(status),
+                      ],
                     ),
                   ),
                 ),
@@ -347,8 +369,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       return Padding(
         padding: EdgeInsets.only(top: 8.h),
         child: Row(
-          crossAxisAlignment:
-          showAvatar ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: showAvatar ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (showAvatar)
               Stack(
@@ -356,9 +377,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   CircleAvatar(
                     radius: 18.r,
                     child: ClipOval(
-                      child: chatImage.startsWith('http')
+                      child: displayImage.startsWith('http')
                           ? CachedNetworkImage(
-                        imageUrl: chatImage,
+                        imageUrl: displayImage,
                         fit: BoxFit.cover,
                         placeholder: (context, url) => const CircularProgressIndicator(),
                         errorWidget: (context, url, error) => Image.asset(
@@ -367,7 +388,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ),
                       )
                           : Image.asset(
-                        chatImage,
+                        displayImage,
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -392,7 +413,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               )
             else
               SizedBox(width: 36.w),
-
             SizedBox(width: 8.w),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,8 +463,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return Padding(
       padding: EdgeInsets.only(top: 8.h),
       child: Row(
-        mainAxisAlignment:
-        isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe)
@@ -453,7 +472,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               children: [
                 CircleAvatar(
                   radius: 18.r,
-                  backgroundImage: AssetImage(chatImage),
+                  child: ClipOval(
+                    child: displayImage.startsWith('http')
+                        ? CachedNetworkImage(
+                      imageUrl: displayImage,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => const CircularProgressIndicator(),
+                      errorWidget: (context, url, error) => Image.asset(
+                        'assets/images/therapist.png',
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                        : Image.asset(
+                      displayImage,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
                 Positioned(
                   right: 0,
@@ -475,10 +509,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             )
                 : SizedBox(width: 36.w),
           if (!isMe) SizedBox(width: 8.w),
-
           Column(
-            crossAxisAlignment:
-            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               GestureDetector(
                 onTap: () => _toggleTimestamp(message.id),
@@ -535,6 +567,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           ),
                         ),
                       ],
+                      if (isMe) ...[
+                        SizedBox(width: 8.w),
+                        _buildStatusIndicator(message.status),
+                      ],
                     ],
                   ),
                 ),
@@ -551,6 +587,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildStatusIndicator(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.sending:
+        return SizedBox(
+          width: 12.w,
+          height: 12.w,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+          ),
+        );
+      case MessageStatus.sent:
+        return Icon(
+          Icons.check_circle,
+          color: Colors.green,
+          size: 12.sp,
+        );
+      case MessageStatus.failed:
+        return Icon(
+          Icons.error_outline,
+          color: Colors.red,
+          size: 12.sp,
+        );
+    }
   }
 
   Widget _daySeparator(String date) {
@@ -606,44 +668,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
             SizedBox(width: 8.w),
-            GestureDetector(
-              onTap: () {
+            Obx(() => GestureDetector(
+              onTap: () async {
+                if (_controller.isConnecting.value) return;
                 if (_isTyping) {
                   final text = _messageController.text.trim();
                   if (text.isNotEmpty) {
-                    setState(() {
-                      _messages.add(ChatMessage(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        text: text,
-                        isMe: true,
-                        timestamp: DateTime.now(),
-                      ));
-                      _messageController.clear();
-                    });
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      _scrollToBottom();
-                    });
+                    _controller.sendMessage(text);
+                    _messageController.clear();
                   }
                 } else {
-                  setState(() {
-                    _messages.add(ChatMessage(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      text: 'Voice message (0:05)',
-                      isMe: true,
-                      isVoice: true,
-                      timestamp: DateTime.now(),
-                    ));
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom();
-                  });
+                  _controller.sendMessage('Voice message (0:05)', isVoice: true);
                 }
               },
               child: Container(
                 height: 50.w,
                 width: 50.w,
                 decoration: BoxDecoration(
-                  color: primaryColor,
+                  color: _controller.isConnecting.value ? Colors.grey : primaryColor,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -652,7 +694,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   size: 20.sp,
                 ),
               ),
-            ),
+            )),
           ],
         ),
       ),

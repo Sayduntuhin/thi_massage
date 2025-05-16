@@ -175,7 +175,7 @@ class AppPages {
     ),
     GetPage(
       name: Routes.customerPreferencesPage,
-      page: () => CustomerPreferencesScreen(),
+      page: () => const CustomerPreferencesScreen(),
       transition: Transition.fadeIn,
       middlewares: [authMiddleware],
     ),

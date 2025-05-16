@@ -4,8 +4,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
+import '../../../api/api_service.dart';
+import '../../../controller/location_controller.dart';
 import '../../../themes/colors.dart';
-import '../../widgets/app_logger.dart'; // Add this import
+import '../../widgets/app_logger.dart';
+import '../../widgets/custom_snackbar.dart';
+import 'package:toastification/toastification.dart';
+import '../../widgets/loading_indicator.dart'; // Added for LoadingManager
 
 class AppointmentRequestPage extends StatefulWidget {
   const AppointmentRequestPage({super.key});
@@ -15,15 +20,22 @@ class AppointmentRequestPage extends StatefulWidget {
 }
 
 class _AppointmentRequestPageState extends State<AppointmentRequestPage> with SingleTickerProviderStateMixin {
-  bool _isAccepted = false;
+  late bool _isAccepted = false;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
   final Completer<GoogleMapController> _mapControllerCompleter = Completer<GoogleMapController>();
-  final LatLng _initialPosition = const LatLng(37.42796133580664, -122.085749655962);
+  LatLng _initialPosition = const LatLng(37.421998, -122.084); // Default fallback
   final Set<Marker> _markers = {};
   MapType _currentMapType = MapType.normal;
   bool _showTraffic = false;
   BitmapDescriptor? _customMarkerIcon;
+  final ApiService _apiService = ApiService();
+  final LocationController _locationController = Get.find<LocationController>();
+  Map<String, dynamic>? _bookingDetails;
+  bool _isLoading = true;
+  String? _errorMessage;
+  String? _locationName;
+  final String _baseurl = ApiService.baseUrl; // Replace with your base URL
 
   @override
   void initState() {
@@ -32,12 +44,62 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _progressAnimation = Tween<double>(begin: 0, end: 0.6).animate(
+    _progressAnimation = Tween<double>(begin: 0, end: 0.5).animate(
       CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
     );
     _setCustomMarkerIcon();
-    _setInitialMarker();
+    _fetchBookingDetails();
     AppLogger.debug('AppointmentRequestPage initialized');
+  }
+
+  Future<void> _fetchBookingDetails() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final arguments = Get.arguments;
+      final bookingId = arguments['booking_id'];
+      if (bookingId == null) {
+        throw Exception('Booking ID is missing');
+      }
+      AppLogger.debug('Fetching booking details for booking_id: $bookingId');
+      final details = await _apiService.getBookingDetailsbByTherapist(bookingId);
+      final latitude = details['map']?['latitude']?.toDouble();
+      final longitude = details['map']?['longitude']?.toDouble();
+      if (latitude == null || longitude == null) {
+        throw Exception('Invalid location data in response');
+      }
+      final coords = '$latitude,$longitude';
+      final address = await _locationController.getAddressFromCoordinatesString(coords);
+      setState(() {
+        _bookingDetails = details;
+        _initialPosition = LatLng(latitude, longitude);
+        _locationName = address;
+        _isLoading = false;
+        // Set progress animation based on duration_minutes
+        final duration = (details['duration_minutes']?.toDouble() ?? 60) / 120;
+        _progressAnimation = Tween<double>(begin: 0, end: duration).animate(
+          CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
+        );
+        _progressController.forward(); // Start animation immediately
+        _updateMarkers();
+      });
+      await _goToLocation(_initialPosition);
+      AppLogger.debug('Booking details fetched: $details');
+      AppLogger.debug('Location name: $address');
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to load booking details: $e';
+      });
+      CustomSnackBar.show(
+        context,
+        _errorMessage!,
+        type: ToastificationType.error,
+      );
+      AppLogger.error('Error fetching booking details: $e');
+    }
   }
 
   void _setCustomMarkerIcon() async {
@@ -49,31 +111,14 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     }
   }
 
-  void _setInitialMarker() {
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('massage_location'),
-        position: _initialPosition,
-        infoWindow: const InfoWindow(
-          title: 'Hamill Ave',
-          snippet: 'Massage Appointment Location',
-        ),
-        icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker,
-        onTap: () {
-          _showLocationInfoDialog();
-        },
-      ),
-    );
-  }
-
   void _updateMarkers() {
     _markers.clear();
     _markers.add(
       Marker(
         markerId: const MarkerId('massage_location'),
         position: _initialPosition,
-        infoWindow: const InfoWindow(
-          title: 'Hamill Ave',
+        infoWindow: InfoWindow(
+          title: _locationName ?? 'Appointment Location',
           snippet: 'Massage Appointment Location',
         ),
         icon: _customMarkerIcon ?? BitmapDescriptor.defaultMarker,
@@ -90,13 +135,13 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Appointment Location'),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Hamill Ave'),
-              SizedBox(height: 8),
-              Text('This is where your appointment will take place.'),
+              Text(_locationName ?? 'Unknown Location'),
+              SizedBox(height: 8.h),
+              const Text('This is where your appointment will take place.'),
             ],
           ),
           actions: [
@@ -122,35 +167,90 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
   void _launchNavigation() {
     Get.snackbar(
       'Navigation',
-      'Launching navigation to Hamill Ave...',
+      'Launching navigation to ${_locationName ?? "appointment location"}...',
       snackPosition: SnackPosition.BOTTOM,
     );
+    AppLogger.debug('Launching navigation to: $_initialPosition');
   }
 
-  @override
-  void dispose() {
-    _progressController.dispose();
-    _mapControllerCompleter.future.then((controller) => controller.dispose());
-    super.dispose();
+  Future<void> _acceptAppointment() async {
+    try {
+      final bookingId = Get.arguments['booking_id'];
+      if (bookingId == null) {
+        throw Exception('Booking ID is missing');
+      }
+      LoadingManager.showLoading();
+      AppLogger.debug('Accepting appointment for booking_id: $bookingId');
+      final response = await _apiService.updateBookingStatus(bookingId, 'accepted');
+      LoadingManager.hideLoading();
+      if (response['message'] == 'Appointment accepted successfully.') {
+        setState(() {
+          _isAccepted = true;
+        });
+        CustomSnackBar.show(
+          context,
+          'Appointment accepted',
+          type: ToastificationType.success,
+        );
+        AppLogger.debug('Appointment $bookingId accepted');
+      } else {
+        throw Exception('Unexpected response: ${response['message']}');
+      }
+    } catch (e) {
+      LoadingManager.hideLoading();
+      CustomSnackBar.show(
+        context,
+        'Failed to accept appointment: $e',
+        type: ToastificationType.error,
+      );
+      AppLogger.error('Error accepting appointment: $e');
+    }
   }
 
-  void _acceptAppointment() {
-    setState(() {
-      _isAccepted = true;
-    });
-    _progressController.forward();
+  Future<void> _rejectAppointment() async {
+    try {
+      final bookingId = Get.arguments['booking_id'];
+      if (bookingId == null) {
+        throw Exception('Booking ID is missing');
+      }
+      LoadingManager.showLoading();
+      AppLogger.debug('Rejecting appointment for booking_id: $bookingId');
+      final response = await _apiService.updateBookingStatus(bookingId, 'rejected');
+      LoadingManager.hideLoading();
+      if (response['message'] == 'Appointment rejected successfully.') {
+        CustomSnackBar.show(
+          context,
+          'Appointment rejected',
+          type: ToastificationType.info,
+        );
+        Get.back();
+        AppLogger.debug('Appointment $bookingId rejected');
+      } else {
+        throw Exception('Unexpected response: ${response['message']}');
+      }
+    } catch (e) {
+      LoadingManager.hideLoading();
+      CustomSnackBar.show(
+        context,
+        'Failed to reject appointment: $e',
+        type: ToastificationType.error,
+      );
+      AppLogger.error('Error rejecting appointment: $e');
+    }
   }
 
   void _onMapTypeButtonPressed() {
     setState(() {
       _currentMapType = _currentMapType == MapType.normal ? MapType.satellite : MapType.normal;
     });
+    AppLogger.debug('Map type changed to: $_currentMapType');
   }
 
   void _onTrafficButtonPressed() {
     setState(() {
       _showTraffic = !_showTraffic;
     });
+    AppLogger.debug('Traffic layer toggled: $_showTraffic');
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -180,14 +280,32 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       },
     );
   }
+
   Future<void> _goToLocation(LatLng position) async {
-    final GoogleMapController controller = await _mapControllerCompleter.future;
-    final CameraPosition newPosition = CameraPosition(
-      target: position,
-      zoom: 18,
-      tilt: 50.0,
-    );
-    await controller.animateCamera(CameraUpdate.newCameraPosition(newPosition));
+    try {
+      final GoogleMapController controller = await _mapControllerCompleter.future;
+      final CameraPosition newPosition = CameraPosition(
+        target: position,
+        zoom: 15,
+        tilt: 50.0,
+      );
+      await controller.animateCamera(CameraUpdate.newCameraPosition(newPosition));
+      AppLogger.debug('Map camera moved to: $position');
+    } catch (e) {
+      AppLogger.error('Error moving map camera: $e');
+    }
+  }
+
+  String _formatSessionType(String? sessionType) {
+    if (sessionType == null) return 'Single at Home';
+    return sessionType.replaceAll('_', ' ');
+  }
+
+  @override
+  void dispose() {
+    _progressController.dispose();
+    _mapControllerCompleter.future.then((controller) => controller.dispose());
+    super.dispose();
   }
 
   @override
@@ -206,7 +324,50 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
             ),
           ),
           SafeArea(
-            child: Column(
+            child: _isLoading
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: primaryColor),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'Loading appointment details...',
+                    style: TextStyle(fontSize: 16.sp, color: Colors.black54),
+                  ),
+                ],
+              ),
+            )
+                : _errorMessage != null
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 48.sp),
+                  SizedBox(height: 16.h),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(fontSize: 16.sp, color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 16.h),
+                  ElevatedButton.icon(
+                    onPressed: _fetchBookingDetails,
+                    icon: const Icon(Icons.refresh),
+                    label: Text('Retry', style: TextStyle(fontSize: 16.sp)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+                : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
@@ -218,29 +379,126 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         onTap: () => Get.back(),
                         child: Icon(Icons.arrow_back_ios, color: Colors.white, size: 25.sp),
                       ),
-                      SizedBox(
-                        width: 0.45.sw,
-                        child: Text(
-                          "Thai Massage",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 40.sp,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "PlayfairDisplay",
+                      SizedBox(height: 10.h),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: Text(
+                                    _bookingDetails?['massage_type'] ?? 'Thai Massage',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 40.sp,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: "PlayfairDisplay",
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: Text(
+                                    _formatSessionType(_bookingDetails?['session_type']),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w500,
+                                      fontFamily: "Urbanist",
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 0.45.sw,
-                        child: Text(
-                          "Single at Home",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: "Urbanist",
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              margin: EdgeInsets.only(left: 12.w, top: 8.h),
+                              decoration: BoxDecoration(
+                                color: const Color(0x668f5e0a),
+                                borderRadius: BorderRadius.circular(12.r),
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.all(12.r),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        SvgPicture.asset(
+                                          "assets/svg/calander.svg",
+                                          height: 20.h,
+                                          width: 20.w,
+                                        ),
+                                        SizedBox(width: 8.w),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              "Date Schedule",
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10.sp,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            Text(
+                                              _bookingDetails?['date_scheduled'] ?? 'N/A',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12.sp,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 8.h),
+                                    Row(
+                                      children: [
+                                        SvgPicture.asset(
+                                          "assets/svg/time.svg",
+                                          height: 20.h,
+                                          width: 20.w,
+                                        ),
+                                        SizedBox(width: 8.w),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              "Time Scheduled",
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10.sp,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            Text(
+                                              _bookingDetails?['time_scheduled'] ?? 'N/A',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12.sp,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                       SizedBox(height: 0.05.sh),
                       Text(
@@ -257,7 +515,10 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         children: [
                           CircleAvatar(
                             radius: 24.r,
-                            backgroundImage: const AssetImage("assets/images/profilepic.png"),
+                            backgroundImage: _bookingDetails?['client']?['image'] != null
+                                ? NetworkImage(
+                                '$_baseurl/client${_bookingDetails!['client']['image']}')
+                                : const AssetImage("assets/images/profilepic.png") as ImageProvider,
                           ),
                           SizedBox(width: 10.w),
                           Expanded(
@@ -267,14 +528,22 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                 Row(
                                   children: [
                                     Text(
-                                      "Mike Milan",
+                                      _bookingDetails?['client']?['name'] ?? 'Unknown',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14.sp,
                                       ),
                                     ),
                                     SizedBox(width: 4.w),
-                                    Icon(Icons.male, size: 16.sp, color: Colors.blue),
+                                    Icon(
+                                      _bookingDetails?['client']?['gender'] == 'male'
+                                          ? Icons.male
+                                          : Icons.female,
+                                      size: 16.sp,
+                                      color: _bookingDetails?['client']?['gender'] == 'male'
+                                          ? Colors.blue
+                                          : Colors.purple,
+                                    ),
                                   ],
                                 ),
                                 Row(
@@ -282,7 +551,9 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                     Icon(Icons.star, color: Colors.amber, size: 14.sp),
                                     SizedBox(width: 2.w),
                                     Text(
-                                      "4.2 (200+) Past Customer",
+                                      _bookingDetails?['client']?['is_returning'] == true
+                                          ? 'Returning Customer'
+                                          : 'New Customer',
                                       style: TextStyle(
                                         fontSize: 12.sp,
                                         color: Colors.black54,
@@ -296,12 +567,24 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                           _isAccepted
                               ? GestureDetector(
                             onTap: () {
-                              Get.toNamed("/chatDetailsPage");
+                              Get.toNamed("/chatDetailsPage",
+                                arguments: {
+                                  'client_id': _bookingDetails?['client']?['id'],
+                                  'client_name': _bookingDetails?['client']?['name'] ?? 'Unknown',
+                                  'client_image': _bookingDetails?['client']?['image'] != null
+                                      ? '$_baseurl/client${_bookingDetails!['client']['image']}'
+                                      : null,
+                                },
+                              );
                             },
                             child: SvgPicture.asset(
                               "assets/svg/chat.svg",
                               height: 40.h,
                               width: 40.w,
+                              colorFilter: ColorFilter.mode(
+                                primaryColor,
+                                BlendMode.srcIn,
+                              ),
                             ),
                           )
                               : Row(
@@ -316,7 +599,15 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                 ),
                               ),
                               SizedBox(width: 6.w),
-                              _statusButton("Reject", Colors.transparent, Colors.red, Colors.red),
+                              GestureDetector(
+                                onTap: _rejectAppointment,
+                                child: _statusButton(
+                                  "Reject",
+                                  Colors.transparent,
+                                  Colors.red,
+                                  Colors.red,
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -327,7 +618,10 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                 ),
                 GestureDetector(
                   onTap: () {
-                    Get.toNamed("/customerPreferencesPage");
+                    Get.toNamed(
+                      "/customerPreferencesPage",
+                      arguments: {'preferences': _bookingDetails?['preferences']},
+                    );
                   },
                   child: Container(
                     height: 0.05.sh,
@@ -376,7 +670,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                 borderRadius: BorderRadius.circular(16.r),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
+                                    color: Colors.black.withAlpha(50),
                                     blurRadius: 10,
                                     offset: const Offset(0, 5),
                                   ),
@@ -403,8 +697,8 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                       },
                                     ),
                                     Positioned(
-                                      right: 10,
-                                      top: 10,
+                                      right: 10.w,
+                                      top: 10.h,
                                       child: Column(
                                         children: [
                                           FloatingActionButton(
@@ -417,7 +711,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                                   ? Icons.satellite_alt
                                                   : Icons.map,
                                               color: primaryColor,
-                                              size: 18,
+                                              size: 18.sp,
                                             ),
                                           ),
                                           SizedBox(height: 5.h),
@@ -429,15 +723,15 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                             child: Icon(
                                               Icons.traffic,
                                               color: _showTraffic ? primaryColor : Colors.grey,
-                                              size: 18,
+                                              size: 18.sp,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     Positioned(
-                                      right: 10,
-                                      bottom: 10,
+                                      right: 10.w,
+                                      bottom: 10.h,
                                       child: FloatingActionButton(
                                         heroTag: "zoomButton",
                                         mini: true,
@@ -446,7 +740,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                         child: Icon(
                                           Icons.center_focus_strong,
                                           color: primaryColor,
-                                          size: 18,
+                                          size: 18.sp,
                                         ),
                                       ),
                                     ),
@@ -462,19 +756,21 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                           borderRadius: BorderRadius.circular(20.r),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withOpacity(0.1),
+                                              color: Colors.black.withAlpha(50),
                                               blurRadius: 5,
                                               offset: const Offset(0, 2),
                                             ),
                                           ],
                                         ),
                                         child: Text(
-                                          "Hamill Ave",
+                                          _locationName ?? 'Loading location...',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontSize: 14.sp,
                                             fontWeight: FontWeight.w500,
                                           ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
@@ -490,13 +786,19 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text("Duration", style: TextStyle(fontSize: 14.sp)),
                                   Text(
-                                    "60 min",
+                                    "Duration",
+                                    style: TextStyle(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    "${_bookingDetails?['duration_minutes'] ?? 60} min",
                                     style: TextStyle(
                                       color: primaryTextColor,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15.sp,
                                     ),
                                   ),
                                 ],
@@ -508,20 +810,32 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                   return Column(
                                     children: [
                                       ClipRRect(
-                                        borderRadius: BorderRadius.circular(4.r),
+                                        borderRadius: BorderRadius.circular(6.r),
                                         child: LinearProgressIndicator(
                                           value: _progressAnimation.value,
-                                          backgroundColor: Colors.grey.shade300,
-                                          valueColor: AlwaysStoppedAnimation<Color>(primaryTextColor),
+                                          backgroundColor: Colors.grey.shade200,
+                                          valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
                                           minHeight: 10.h,
                                         ),
                                       ),
-                                      SizedBox(height: 4.h),
+                                      SizedBox(height: 8.h),
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text("0 min", style: TextStyle(fontSize: 12.sp)),
-                                          Text("120 min", style: TextStyle(fontSize: 12.sp)),
+                                          Text(
+                                            "0 min",
+                                            style: TextStyle(
+                                              fontSize: 13.sp,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                          Text(
+                                            "120 min",
+                                            style: TextStyle(
+                                              fontSize: 13.sp,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ],
@@ -541,12 +855,27 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _locationRow("Venue", "House"),
-                                _locationRow("Number of floors", "2"),
-                                _locationRow("Elevator/Escalator", "NO"),
-                                _locationRow("Massage table", "NO"),
-                                _locationRow("Parking", "Yes. Street Parking"),
-                                _locationRow("Pet", "Yes. Cat"),
+                                _locationRow("Venue", _bookingDetails?['location']?['venue'] ?? 'Unknown'),
+                                _locationRow(
+                                  "Number of floors",
+                                  _bookingDetails?['location']?['number_of_floors']?.toString() ?? 'N/A',
+                                ),
+                                _locationRow(
+                                  "Elevator/Escalator",
+                                  _bookingDetails?['location']?['elevator_or_escalator'] == true ? 'Yes' : 'No',
+                                ),
+                                _locationRow(
+                                  "Massage table",
+                                  _bookingDetails?['location']?['massage_table'] == true ? 'Yes' : 'No',
+                                ),
+                                _locationRow(
+                                  "Parking",
+                                  _bookingDetails?['location']?['parking'] ?? 'None',
+                                ),
+                                _locationRow(
+                                  "Pet",
+                                  _bookingDetails?['location']?['pet'] == true ? 'Yes' : 'No',
+                                ),
                               ],
                             ),
                           ),
@@ -559,97 +888,14 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
               ],
             ),
           ),
-          Positioned(
-            bottom: .72.sh,
-            left: 0.55.sw,
-            right: 0.08.sw,
-            top: 0.165.sh,
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0x668f5e0a),
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(15.r),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      children: [
-                        SvgPicture.asset(
-                          "assets/svg/calander.svg",
-                          height: 25.h,
-                          width: 25.w,
-                        ),
-                        SizedBox(width: 5.w),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Date Schedule",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.sp,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              "20 July, 2024",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 5.h),
-                    Row(
-                      children: [
-                        SvgPicture.asset(
-                          "assets/svg/time.svg",
-                          height: 25.h,
-                          width: 25.w,
-                        ),
-                        SizedBox(width: 5.w),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Time Scheduled",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.sp,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              "11:00 am",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _statusButton(String label, Color color, Color textcolor, Color borderColor) {
+  Widget _statusButton(String label, Color color, Color textColor, Color borderColor) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 3.h),
+      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 6.h),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(12.r),
@@ -657,7 +903,11 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       ),
       child: Text(
         label,
-        style: TextStyle(color: textcolor, fontSize: 12.sp, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          color: textColor,
+          fontSize: 14.sp,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -668,8 +918,20 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(key, style: TextStyle(fontSize: 13.sp, color: Colors.black54)),
-          Text(value, style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w500)),
+          Text(
+            key,
+            style: TextStyle(
+              fontSize: 13.sp,
+              color: Colors.black54,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );

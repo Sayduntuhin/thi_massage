@@ -33,6 +33,8 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
   Future<void> fetchBookingDetails() async {
     final arguments = Get.arguments as Map<String, dynamic>?;
     final bookingId = arguments?['booking_id'] as int? ?? 0;
+    final therapistId = arguments?['therapist_user_id'] as int? ?? 0;
+    AppLogger.debug('Booking ID: $bookingId, Therapist ID: $therapistId');
     final therapistNameFallback = arguments?['therapist_name'] as String? ?? 'Unknown Therapist';
 
     if (bookingId == 0) {
@@ -270,7 +272,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                         onTap: () {
                           Get.toNamed("/liveTrackingPage", arguments: {
                             'booking_id': arguments?['booking_id'],
-                            'therapist_user_id': bookingDetails!['therapist']['user'],
+                            'therapist_user_id': arguments?['therapist_user_id'],
                             'therapist_name': bookingDetails!['therapist']['name'] ?? therapistNameFallback,
                           });
                         },
@@ -286,7 +288,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                               : 'assets/images/fevTherapist1.png';
                           Get.toNamed("/chatDetailsPage", arguments: {
                             'name': bookingDetails!['therapist']['name'] ?? therapistNameFallback,
-                            'therapist_user_id': bookingDetails!['therapist']['user'],
+                            'therapist_user_id': arguments?['therapist_user_id'] ?? "1",
                             'image': therapistImage,
                           });
                         },

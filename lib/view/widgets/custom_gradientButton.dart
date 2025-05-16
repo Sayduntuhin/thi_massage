@@ -4,32 +4,35 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 class CustomGradientButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
-  final bool showIcon; // If true, show add icon
+  final bool showIcon;
+  final bool isLoading; // New loading state
+
   const CustomGradientButton({
     super.key,
     required this.text,
     required this.onPressed,
-    this.showIcon = false, // Default false, only show when needed
+    this.showIcon = false,
+    this.isLoading = false, // Default to false
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity, // Full width button
+      width: double.infinity,
       height: 50.h,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30.r),
         gradient: const LinearGradient(
           colors: [
-            Color(0xFFB28D28), // Gradient start color
-            Color(0xFF8F5E0A), // Gradient end color
+            Color(0xFFB28D28),
+            Color(0xFF8F5E0A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed, // Disable button when loading
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
@@ -37,14 +40,26 @@ class CustomGradientButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(30.r),
           ),
         ),
-        child: Row(
+        child: isLoading
+            ? SizedBox(
+          width: 24.w,
+          height: 24.h,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.w,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        )
+            : Row(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (showIcon) // Show icon only if `showIcon` is true
+            if (showIcon)
               Padding(
-                padding: EdgeInsets.only(right: 8.w,bottom: 2.h),
-                child: Image.asset("assets/images/plus.png",width: 20.w,),
+                padding: EdgeInsets.only(right: 8.w, bottom: 2.h),
+                child: Image.asset(
+                  "assets/images/plus.png",
+                  width: 20.w,
+                ),
               ),
             Text(
               text,
@@ -52,7 +67,7 @@ class CustomGradientButton extends StatelessWidget {
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
-                fontFamily: 'Urbanist'
+                fontFamily: 'Urbanist',
               ),
             ),
           ],

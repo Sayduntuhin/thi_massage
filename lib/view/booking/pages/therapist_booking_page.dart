@@ -402,6 +402,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 final request = _appointmentRequests[index];
                 final dateParts = _parseDate(request['date'] ?? 'N/A');
                 return _appointmentRequestCard(
+                  index: index,
                   name: request['client_name'] ?? 'Unknown',
                   service: request['specility'] ?? 'N/A',
                   day: dateParts['day']!,
@@ -517,6 +518,7 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _appointmentRequestCard({
+    required int index, // Add index parameter
     required String name,
     required String service,
     required String day,
@@ -525,9 +527,16 @@ class _CalendarPageState extends State<CalendarPage> {
     required String time,
     bool isFemale = false,
   }) {
+    final request = _appointmentRequests[index]; // Use the passed index
     return GestureDetector(
-      onTap: () {
-        Get.toNamed('/appointmentRequestPage');
+    onTap: () {
+        Get.toNamed('/appointmentRequestPage', arguments: {
+          'booking_id': request['Booking_id'], // Pass booking_id
+          'client_name': request['client_name'] ?? 'Unknown',
+          'client_image': request['client_image'],
+          'client_gender': request['client_gender'] ?? 'male',
+        });
+        AppLogger.debug('Navigating to appointmentRequestPage with booking_id: ${request['id']}');
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
