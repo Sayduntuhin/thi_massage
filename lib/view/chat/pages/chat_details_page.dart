@@ -196,12 +196,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ],
         ),
         centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: SvgPicture.asset('assets/svg/phone_with_Color.svg'),
-          ),
-        ],
         leading: Padding(
           padding: const EdgeInsets.only(left: 10, top: 5, bottom: 5),
           child: Container(

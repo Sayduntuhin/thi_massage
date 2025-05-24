@@ -50,14 +50,17 @@ class CustomAppBar extends StatelessWidget {
   }
 }
 
+
 class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBackButton;
+  final VoidCallback? onMenuPressed; // Callback for menu button
 
   const SecondaryAppBar({
     super.key,
     required this.title,
-    this.showBackButton = true, // ✅ Default true
+    this.showBackButton = true,
+    this.onMenuPressed,
   });
 
   @override
@@ -74,18 +77,18 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
           color: Colors.black,
         ),
       ),
-      centerTitle: true, // ✅ Keeps title centered
+      centerTitle: true, // Keeps title centered
       leadingWidth: 0.14.sw,
-      leading: showBackButton
-          ?  Padding(
-        padding: const EdgeInsets.only(left: 10,top: 5,bottom: 5),
+      leading: Padding(
+        padding: EdgeInsets.only(left: 10.w, top: 5.h, bottom: 5.h),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.all(Radius.circular(15.0)),
             border: Border.all(color: buttonBorderColor.withAlpha(60), width: 1.0),
           ),
-          child: IconButton(
+          child: showBackButton
+              ? IconButton(
             icon: Padding(
               padding: EdgeInsets.only(left: 5.w),
               child: Icon(Icons.arrow_back_ios, size: 20.sp, color: primaryButtonColor),
@@ -93,10 +96,13 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
             onPressed: () {
               Navigator.of(context).pop();
             },
+          )
+              : IconButton(
+            icon: Icon(Icons.menu, size: 20.sp, color: primaryButtonColor),
+            onPressed: onMenuPressed,
           ),
         ),
-      )
-          : null, // ✅ Hide back button when false
+      ),
     );
   }
 

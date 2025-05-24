@@ -205,13 +205,6 @@ class ChatWebSocketController extends GetxController {
       Future.delayed(Duration(seconds: 5), connectWebSocket);
     } else {
       AppLogger.error('Max reconnect attempts reached');
-      if (context != null) {
-        CustomSnackBar.show(
-          context!,
-          'Unable to reconnect to chat',
-          type: ToastificationType.error,
-        );
-      }
       isConnecting.value = false;
     }
   }

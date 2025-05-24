@@ -147,7 +147,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       itemBuilder: (context, index) {
         final chat = _chatList[index];
         final profileImage = chat['profile_image']?.startsWith('/')
-            ? '${ApiService.baseUrl}${chat['profile_image']}'
+            ? '${ApiService.baseUrl}/api${chat['profile_image']}'
             : chat['profile_image'] ?? 'assets/images/therapist.png';
         final latestMessage = chat['latest_message']?.isNotEmpty == true
             ? chat['latest_message']

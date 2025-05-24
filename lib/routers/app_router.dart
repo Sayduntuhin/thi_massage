@@ -9,7 +9,7 @@ import 'package:thi_massage/view/auth/signup/page/sign_up.dart';
 import 'package:thi_massage/view/booking/pages/client_appointment_page.dart';
 import 'package:thi_massage/view/booking/pages/client_appointment_payment_page.dart';
 import 'package:thi_massage/view/booking/pages/client_cutomer_preferences_page.dart';
-import 'package:thi_massage/view/booking/pages/client_live_treaking_page.dart';
+import 'package:thi_massage/view/map/page/live_treaking_page.dart';
 import 'package:thi_massage/view/booking/pages/terms_and_conditions.dart';
 import 'package:thi_massage/view/booking/pages/therepist_appinment_request_page.dart';
 import 'package:thi_massage/view/booking/pages/appoinment_details_page.dart';
@@ -20,18 +20,23 @@ import 'package:thi_massage/view/client_profile/pages/invite_friend_page.dart';
 import 'package:thi_massage/view/client_profile/pages/support_page.dart';
 import 'package:thi_massage/view/home/page/home_page.dart';
 import 'package:thi_massage/view/home/page/notification_page.dart';
-import 'package:thi_massage/view/home/widgets/therapist_profile_view_by_client_page.dart';
+import 'package:thi_massage/view/client_profile/pages/therapist_profile_view_by_client_page.dart';
 import 'package:thi_massage/view/home/widgets/search_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/add_card_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/profile_setup.dart';
 import 'package:thi_massage/view/profileSetup/pages/review_submitted_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/verify_documents_page.dart';
+import 'package:thi_massage/view/therapist_profile/page/app_setting_page.dart';
+import 'package:thi_massage/view/therapist_profile/page/availibility_setting.dart';
+import 'package:thi_massage/view/therapist_profile/page/therapist_Support.dart';
 import 'package:thi_massage/view/wallet/pages/funds_Withdraw_Page.dart';
 import 'package:thi_massage/view/wallet/pages/new_payout_page.dart';
 import 'package:thi_massage/view/wallet/pages/payment_history_page.dart';
 import 'package:thi_massage/view/welcome/pages/welcome_page.dart';
 import 'package:thi_massage/view/auth/forgetPassword/change_password_page.dart';
-
+import '../view/home/page/therapist_home_page.dart';
+import '../view/therapist_profile/page/review_section_therapist.dart';
+import '../view/therapist_profile/page/treams_privacy.dart';
 class Routes {
   static const String initial = "/";
   static const String logIn = "/logIn";
@@ -63,8 +68,13 @@ class Routes {
   static const String fundsWithdrawPage = "/fundsWithdrawPage";
   static const String paymentHistoryPage = "/paymentHistoryPage";
   static const String appointmentRequestPage = "/appointmentRequestPage";
+  static const String availabilitySettings = "/availabilitySettings";
+  static const String therapistHomePage = "/therapistHomePage";
+  static const String appSettings = "/appSettings";
+  static const String termsPrivacy = "/termsPrivacy";
+  static const String reviewsRatings = "/reviewsRatings";
+  static const String contactSupport = "/contactSupport";
 }
-
 class AppPages {
   static const bool isTherapist = true;
 
@@ -261,10 +271,44 @@ class AppPages {
       transition: Transition.fadeIn,
       middlewares: [authMiddleware],
     ),
+    GetPage(
+      name: Routes.availabilitySettings,
+      page: () => AvailabilitySettingsPage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.therapistHomePage,
+      page: () => TherapistHomePage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.appSettings,
+      page: () => AppSettingsPage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.termsPrivacy,
+      page: () => TermsPrivacyPage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.reviewsRatings,
+      page: () => TherapistProfilePage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.contactSupport,
+      page: () => TherapistSupportPage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
   ];
 }
-
-// Custom middleware class for authentication
 class AuthMiddleware extends GetMiddleware {
   @override
   int? get priority => 1;

@@ -569,7 +569,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                             onTap: () {
                               Get.toNamed("/chatDetailsPage",
                                 arguments: {
-                                  'client_id': _bookingDetails?['client']?['id'],
+                                  'client_id': _bookingDetails?['client']?['client_id'],
                                   'client_name': _bookingDetails?['client']?['name'] ?? 'Unknown',
                                   'client_image': _bookingDetails?['client']?['image'] != null
                                       ? '$_baseurl/client${_bookingDetails!['client']['image']}'
@@ -660,7 +660,9 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         children: [
                           GestureDetector(
                             onTap: () {
-                              Get.toNamed('/liveTrackingPage');
+                              Get.toNamed('/liveTrackingPage',arguments: {
+                                'booking_id': Get.arguments['booking_id'],
+                              });
                             },
                             child: Container(
                               margin: EdgeInsets.symmetric(vertical: 10.h),

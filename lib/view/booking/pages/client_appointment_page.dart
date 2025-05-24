@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:thi_massage/themes/colors.dart';
@@ -897,10 +896,13 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       child: CustomGradientButton(
                         text: "Proceed to Pay",
                         onPressed: () async {
+                          // Show loading indicator immediately for better UX
+                          LoadingManager.showLoading();
+
                           // Validation
                           if (_selectedTherapist == null ||
-                              (_isScheduleSelected &&
-                                  _selectedDateTime == null)) {
+                              (_isScheduleSelected && _selectedDateTime == null)) {
+                            LoadingManager.hideLoading();
                             CustomSnackBar.show(
                               context,
                               'Please select a therapist and date/time for scheduled appointments',
@@ -913,27 +915,38 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           double? latitude;
                           double? longitude;
                           try {
-                            await locationController.fetchCurrentLocation();
-                            if (!locationController.hasError.value) {
-                              final position =
-                                  await Geolocator.getCurrentPosition(
-                                desiredAccuracy: LocationAccuracy.high,
-                              );
+                            // Check if a valid cached location is available
+                            if (locationController.hasValidLocation &&
+                                locationController.position.value != null) {
                               latitude = double.parse(
-                                  position.latitude.toStringAsFixed(6));
+                                  locationController.position.value!.latitude.toStringAsFixed(6));
                               longitude = double.parse(
-                                  position.longitude.toStringAsFixed(6));
+                                  locationController.position.value!.longitude.toStringAsFixed(6));
                               AppLogger.debug(
-                                  'Location for booking: lat=$latitude, lon=$longitude');
+                                  'Using cached location: lat=$latitude, lon=$longitude');
                             } else {
-                              CustomSnackBar.show(
-                                context,
-                                'Failed to get location: ${locationController.locationName.value}',
-                                type: ToastificationType.error,
-                              );
-                              return;
+                              // Fetch new location if cached location is invalid or unavailable
+                              await locationController.fetchCurrentLocation();
+                              if (!locationController.hasError.value &&
+                                  locationController.position.value != null) {
+                                latitude = double.parse(
+                                    locationController.position.value!.latitude.toStringAsFixed(6));
+                                longitude = double.parse(
+                                    locationController.position.value!.longitude.toStringAsFixed(6));
+                                AppLogger.debug(
+                                    'Fetched new location: lat=$latitude, lon=$longitude');
+                              } else {
+                                LoadingManager.hideLoading();
+                                CustomSnackBar.show(
+                                  context,
+                                  'Failed to get location: ${locationController.locationName.value}',
+                                  type: ToastificationType.error,
+                                );
+                                return;
+                              }
                             }
                           } catch (e) {
+                            LoadingManager.hideLoading();
                             CustomSnackBar.show(
                               context,
                               'Failed to get location: $e',
@@ -943,13 +956,13 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           }
 
                           final preferencesController =
-                              Get.find<CustomerPreferencesController>();
-                          final preferences =
-                              preferencesController.getAllPreferences();
+                          Get.find<CustomerPreferencesController>();
+                          final preferences = preferencesController.getAllPreferences();
 
                           // Get user ID
                           final userId = await _storage.read(key: 'user_id');
                           if (userId == null) {
+                            LoadingManager.hideLoading();
                             CustomSnackBar.show(
                               context,
                               'Please log in to create a booking',
@@ -959,29 +972,25 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           }
 
                           final selectedMessage = messageTypes.firstWhere(
-                            (message) =>
-                                message["title"] == _selectedMessageType,
+                                (message) => message["title"] == _selectedMessageType,
                             orElse: () => <String, dynamic>{
                               "title": "Swedish Massage",
-                              "image":
-                                  "${ApiService.baseUrl}/media/documents/default2.jpg"
+                              "image": "${ApiService.baseUrl}/media/documents/default2.jpg"
                             },
                           );
 
                           // Handle created_at and date_time
                           final now = DateTime.now();
-                          final createdAt =
-                              _isScheduleSelected && _selectedDateTime != null
-                                  ? _selectedDateTime!
-                                  : now.add(Duration(minutes: 30));
-                          final dateTime =
-                              _isScheduleSelected && _selectedDateTime != null
-                                  ? _selectedDateTime!
-                                  : now;
+                          final createdAt = _isScheduleSelected && _selectedDateTime != null
+                              ? _selectedDateTime!
+                              : now.add(Duration(minutes: 30));
+                          final dateTime = _isScheduleSelected && _selectedDateTime != null
+                              ? _selectedDateTime!
+                              : now;
 
                           // Map massage type to API format
                           final massageTypeMap = messageTypes.asMap().map(
-                              (_, type) => MapEntry(
+                                  (_, type) => MapEntry(
                                   type['title'],
                                   type['title']
                                       .toLowerCase()
@@ -990,38 +999,20 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                           // Build preference payload (only include non-empty values)
                           final preferencePayload = {
-                            if (preferences['Preferred Modality']?.isNotEmpty ??
-                                false)
-                              'preferred_modality':
-                                  preferences['Preferred Modality'],
-                            if (preferences['Preferred Pressure']?.isNotEmpty ??
-                                false)
-                              'preferred_pressure':
-                                  preferences['Preferred Pressure'],
-                            if (preferences['Reasons for Massage']
-                                    ?.isNotEmpty ??
-                                false)
-                              'reason_for_massage':
-                                  preferences['Reasons for Massage'],
-                            if (preferences['Moisturizer Preferences']
-                                    ?.isNotEmpty ??
-                                false)
-                              'moisturizer':
-                                  preferences['Moisturizer Preferences'],
-                            if (preferences['Music Preference']?.isNotEmpty ??
-                                false)
-                              'music_preference':
-                                  preferences['Music Preference'],
-                            if (preferences['Conversation Preferences']
-                                    ?.isNotEmpty ??
-                                false)
-                              'conversation_preference':
-                                  preferences['Conversation Preferences'],
-                            if (preferences['Pregnancy (Female customers)']
-                                    ?.isNotEmpty ??
-                                false)
-                              'pregnancy':
-                                  preferences['Pregnancy (Female customers)'],
+                            if (preferences['Preferred Modality']?.isNotEmpty ?? false)
+                              'preferred_modality': preferences['Preferred Modality'],
+                            if (preferences['Preferred Pressure']?.isNotEmpty ?? false)
+                              'preferred_pressure': preferences['Preferred Pressure'],
+                            if (preferences['Reasons for Massage']?.isNotEmpty ?? false)
+                              'reason_for_massage': preferences['Reasons for Massage'],
+                            if (preferences['Moisturizer Preferences']?.isNotEmpty ?? false)
+                              'moisturizer': preferences['Moisturizer Preferences'],
+                            if (preferences['Music Preference']?.isNotEmpty ?? false)
+                              'music_preference': preferences['Music Preference'],
+                            if (preferences['Conversation Preferences']?.isNotEmpty ?? false)
+                              'conversation_preference': preferences['Conversation Preferences'],
+                            if (preferences['Pregnancy (Female customers)']?.isNotEmpty ?? false)
+                              'pregnancy': preferences['Pregnancy (Female customers)'],
                           };
 
                           // Build full payload
@@ -1029,23 +1020,17 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                             'name': _selectedMessageType,
                             'age_range_start': _ageRange.start.round(),
                             'age_range_end': _ageRange.end.round(),
-                            'massage_preference':
-                                _isBackToBack ? 'back_to_back' : 'single',
+                            'massage_preference': _isBackToBack ? 'back_to_back' : 'single',
                             'number_of_people': _numberOfPeople,
-                            'duration':
-                                int.parse(_selectedDuration.split(' ')[0]),
+                            'duration': int.parse(_selectedDuration.split(' ')[0]),
                             'date_time': dateTime.toUtc().toIso8601String(),
                             'location_type': _location.toLowerCase(),
                             'number_of_floors':
-                                int.tryParse(_numberOfFloorsController.text) ??
-                                    0,
-                            'elevator_or_escalator':
-                                _elevatorSelection == 'Yes',
+                            int.tryParse(_numberOfFloorsController.text) ?? 0,
+                            'elevator_or_escalator': _elevatorSelection == 'Yes',
                             'parking_type': _parkingSelection ?? 'None',
                             'any_pets': _petsSelection == 'Yes',
-                            'massage_type':
-                                massageTypeMap[_selectedMessageType] ??
-                                    'swedish_massage',
+                            'massage_type': massageTypeMap[_selectedMessageType] ?? 'swedish_massage',
                             'instant_appointment': !_isScheduleSelected,
                             'created_at': createdAt.toUtc().toIso8601String(),
                             'user': int.parse(userId),
@@ -1060,9 +1045,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                           AppLogger.debug('Booking Payload: $payload');
 
                           try {
-                            LoadingManager.showLoading();
-                            final response =
-                                await apiService.createBooking(payload);
+                            final response = await apiService.createBooking(payload);
                             preferencesController.clearPreferences();
                             CustomSnackBar.show(
                               context,
@@ -1070,21 +1053,18 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                               type: ToastificationType.success,
                             );
 
-                            // Show loading indicator before navigating to PaymentOptionsSheet
-                            LoadingManager.showLoading();
+                            // Proceed to PaymentOptionsSheet
                             await Future.delayed(Duration(
-                                milliseconds: 500)); // Brief delay for UX
+                                milliseconds: 500)); // Brief delay for UX (optional)
                             LoadingManager.hideLoading();
 
-                            // Proceed to PaymentOptionsSheet
                             PaymentOptionsSheet.show(
                               context,
                               creditCardRoute: Routes.appointmentPaymentPage,
                               arguments: {
                                 'image': selectedMessage["image"],
                                 'name': selectedMessage["title"],
-                                'dateTime':
-                                    _selectedDateTime?.toIso8601String(),
+                                'dateTime': _selectedDateTime?.toIso8601String(),
                                 'elevator': _elevatorSelection,
                                 'parking': _parkingSelection,
                                 'pets': _petsSelection,
@@ -1096,19 +1076,16 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                             );
                           } catch (e) {
                             LoadingManager.hideLoading();
-                            String errorMessage =
-                                'Failed to create booking: $e';
+                            String errorMessage = 'Failed to create booking: $e';
                             if (e.toString().contains('NetworkException')) {
                               errorMessage =
-                                  'No internet connection. Please check your network and try again.';
-                            } else if (e
-                                .toString()
-                                .contains('Please select a valid age range')) {
+                              'No internet connection. Please check your network and try again.';
+                            } else if (e.toString().contains('Please select a valid age range')) {
                               errorMessage = 'Please select a valid age range.';
                             } else if (e.toString().contains(
                                 'Ensure that there are no more than 6 decimal places')) {
                               errorMessage =
-                                  'Location coordinates are too precise. Please try again.';
+                              'Location coordinates are too precise. Please try again.';
                             }
                             CustomSnackBar.show(
                               context,

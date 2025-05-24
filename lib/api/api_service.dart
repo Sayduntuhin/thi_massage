@@ -2374,7 +2374,7 @@ class ApiService {
       throw ApiException('Failed to initialize chat room: $e', 0);
     }
   }
-
+ ///-----------------------Get Chat Inbox method-----------------------///
   Future<List<Map<String, dynamic>>> fetchChatInbox() async {
     final token = await _storage.read(key: 'access_token');
     if (token == null) {
@@ -2404,8 +2404,7 @@ class ApiService {
       throw Exception('Error fetching inbox: $e');
     }
   }
-
-  // Fetch message history (used by ChatWebSocketController)
+  ///-----------------------Get Message History method-----------------------///
   Future<List<Map<String, dynamic>>> fetchMessageHistory(int chatRoomId, String token) async {
     try {
       final response = await http.get(
@@ -2429,6 +2428,198 @@ class ApiService {
       throw Exception('Error fetching message history: $e');
     }
   }
+  ///-----------------------Get Therapist Working Hours method-----------------------///
+  Future<Map<String, dynamic>> getWorkingHours() async {
+    final uri = Uri.parse('$baseUrl/therapist/working-hours/detail/');
+    final accessToken = await _storage.read(key: 'access_token');
+
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.i('API Request Get Working Hours: GET $uri');
+      _logger.i('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Get Working Hours API Response Status: ${response.statusCode}');
+        _logger.i('Get Working Hours API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.i('Working hours fetched: $data');
+          return data;
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Working hours not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch working hours: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch working hours: $e', 0);
+    }
+  }
+  ///-----------------------Update Therapist Working Hours method-----------------------///
+  Future<Map<String, dynamic>> updateWorkingHours(Map<String, dynamic> data) async {
+    final uri = Uri.parse('$baseUrl/therapist/working-hours/update/');
+    final accessToken = await _storage.read(key: 'access_token');
+
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.i('API Request Update Working Hours: PATCH $uri');
+      _logger.i('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+      _logger.i('Request Body: $data');
+    }
+
+    try {
+      final response = await _client.patch(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Update Working Hours API Response Status: ${response.statusCode}');
+        _logger.i('Update Working Hours API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.i('Working hours updated: $data');
+          return data;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Working hours endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to update working hours: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to update working hours: $e', 0);
+    }
+  }
+  ///-----------------------Get Navigation Data method-----------------------///
+  Future<Map<String, dynamic>> getNavigationData(int bookingId, bool isTherapist) async {
+    final String endpoint = isTherapist
+        ? '/therapist/navigation/$bookingId/'
+        : '/client/client_booking_navigation/$bookingId/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Navigation Data: GET $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Navigation Data: ${response.statusCode}');
+        _logger.d('API Response Body Navigation Data: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.d('Navigation data fetched successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Navigation endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch navigation data: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch navigation data: $e');
+    }
+  }
 }
 
 class ApiException implements Exception {
@@ -2440,31 +2631,24 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException: $message${statusCode != null ? ' (Status: $statusCode)' : ''}';
 }
-
 class NoDataException extends ApiException {
   NoDataException(String message) : super(message, 404);
 }
-
 class BadRequestException extends ApiException {
   BadRequestException(super.message, int super.statusCode);
 }
-
 class UnauthorizedException extends ApiException {
   UnauthorizedException(super.message, int super.statusCode);
 }
-
 class ForbiddenException extends ApiException {
   ForbiddenException(super.message, int super.statusCode);
 }
-
 class NotFoundException extends ApiException {
   NotFoundException(super.message, int super.statusCode);
 }
-
 class ServerException extends ApiException {
   ServerException(super.message, int super.statusCode);
 }
-
 class NetworkException extends ApiException {
   NetworkException(super.message);
 }

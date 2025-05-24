@@ -43,6 +43,7 @@ class _TherapistHomePageState extends State<TherapistHomePage>
   Map<String, String> _geocodedAddresses = {};
   bool _isUpdatingAvailability = false;
   final _storage = const FlutterSecureStorage();
+  String? _selectedDrawerItem;
 
   @override
   void initState() {
@@ -411,15 +412,17 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                     style: TextStyle(fontSize: 13.sp, color: Colors.white70),
                   ),
                   SizedBox(height: 30.h),
-                  _buildDrawerItem(Icons.calendar_today, "Availability Settings"),
-                  _buildDrawerItem(Icons.settings, "App Settings"),
-                  _buildDrawerItem(Icons.privacy_tip, "Terms & Privacy Policy"),
-                  _buildDrawerItem(Icons.star_rate, "Reviews & Ratings"),
-                  _buildDrawerItem(Icons.support_agent, "Contact Support"),
+                  _buildDrawerItem(Icons.calendar_today, "Availability Settings", "/availabilitySettings"),
+                  _buildDrawerItem(Icons.settings, "App Settings", "/appSettings"),
+                  _buildDrawerItem(Icons.privacy_tip, "Terms & Privacy Policy", "/termsPrivacy"),
+                  _buildDrawerItem(Icons.star_rate, "Reviews & Ratings", "/reviewsRatings"),
+                  _buildDrawerItem(Icons.support_agent, "Contact Support", "/contactSupport"),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () {
-                      Get.offAllNamed('/welcome');
+                    onTap: () async {
+                      await _storage.delete(key: 'user_id');
+                      await _storage.delete(key: 'access_token');
+                      Get.offAllNamed('/login');
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
@@ -427,20 +430,13 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12.r),
                       ),
-                      child: GestureDetector(
-                        onTap: () async {
-                          await _storage.delete(key: 'user_id');
-                          await _storage.delete(key: 'access_token');
-                          Get.offAllNamed('/login');
-                        },
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.logout, color: Colors.red, size: 18.sp),
-                            SizedBox(width: 8.w),
-                            Text("Log out", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
-                          ],
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout, color: Colors.red, size: 18.sp),
+                          SizedBox(width: 8.w),
+                          Text("Log out", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
+                        ],
                       ),
                     ),
                   ),
@@ -985,14 +981,39 @@ class _TherapistHomePageState extends State<TherapistHomePage>
       ),
     );
   }
-  Widget _buildDrawerItem(IconData icon, String title) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white, size: 20.sp),
-      title: Text(title, style: TextStyle(color: Colors.white, fontSize: 14.sp)),
-      contentPadding: EdgeInsets.zero,
+  Widget _buildDrawerItem(IconData icon, String title, String route) {
+    final isSelected = _selectedDrawerItem == title;
+    return GestureDetector(
       onTap: () {
-        toggleDrawer();
+        setState(() {
+          _selectedDrawerItem = title; // Update selected item
+        });
+        toggleDrawer(); // Close drawer
+        Get.toNamed(route); // Navigate to the route
+        AppLogger.debug('Navigating to $route');
       },
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 4.h),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+        decoration: BoxDecoration(
+          color: isSelected ? selectedTabColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20.sp),
+            SizedBox(width: 12.w),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14.sp,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

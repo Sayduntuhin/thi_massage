@@ -7,9 +7,18 @@ class LocationController extends GetxController {
   var locationName = 'Your location...'.obs;
   var isLoading = true.obs;
   var hasError = false.obs;
+  var position = Rxn<Position>(); // Store Position object
+  var lastUpdated = Rxn<DateTime>(); // Track when location was last updated
 
   // Cache for geocoded addresses to avoid redundant API calls
   final Map<String, String> _addressCache = {};
+
+  // Check if cached location is valid (e.g., not older than 5 minutes)
+  bool get hasValidLocation {
+    if (position.value == null || lastUpdated.value == null) return false;
+    final age = DateTime.now().difference(lastUpdated.value!);
+    return age.inMinutes < 5; // Consider location valid if less than 5 minutes old
+  }
 
   @override
   void onInit() {
@@ -51,15 +60,19 @@ class LocationController extends GetxController {
       }
 
       // Get current position
-      Position position = await Geolocator.getCurrentPosition(
+      Position newPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      AppLogger.debug('Current position: ${position.latitude}, ${position.longitude}');
+      AppLogger.debug('Current position: ${newPosition.latitude}, ${newPosition.longitude}');
+
+      // Update stored position and timestamp
+      position.value = newPosition;
+      lastUpdated.value = DateTime.now();
 
       // Reverse geocode
       List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
+        newPosition.latitude,
+        newPosition.longitude,
       );
 
       if (placemarks.isNotEmpty) {

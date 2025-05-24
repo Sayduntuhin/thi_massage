@@ -272,8 +272,6 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                         onTap: () {
                           Get.toNamed("/liveTrackingPage", arguments: {
                             'booking_id': arguments?['booking_id'],
-                            'therapist_user_id': arguments?['therapist_user_id'],
-                            'therapist_name': bookingDetails!['therapist']['name'] ?? therapistNameFallback,
                           });
                         },
                         child: SvgPicture.asset("assets/svg/location.svg"),
