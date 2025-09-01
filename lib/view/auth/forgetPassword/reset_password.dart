@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import '../../../controller/reset_pass_controller.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
@@ -11,6 +12,11 @@ class ResetPasswordPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ResetPasswordController controller = Get.put(ResetPasswordController());
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final email = Get.arguments['email'] as String? ?? ''; // Retrieve email from arguments
+
     return Scaffold(
       body: SingleChildScrollView(
         child: Padding(
@@ -21,8 +27,6 @@ class ResetPasswordPage extends StatelessWidget {
               SizedBox(height: 0.05.sh),
               const CustomAppBar(),
               SizedBox(height: 0.04.sh),
-        
-              // Title
               Text(
                 "Reset password",
                 style: TextStyle(
@@ -42,31 +46,41 @@ class ResetPasswordPage extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 20.h),
-        
-              // New Password Field
               CustomTextField(
                 hintText: "Enter a new password",
                 icon: Icons.lock_outline,
                 isPassword: true,
+                controller: newPasswordController,
               ),
               SizedBox(height: 15.h),
-        
-              // Confirm Password Field
               CustomTextField(
                 hintText: "Confirm password",
                 icon: Icons.lock_outline,
                 isPassword: true,
+                controller: confirmPasswordController,
               ),
               SizedBox(height: 0.15.sh),
-              // Confirm Button
-              ThaiMassageButton(
+              Obx(() => ThaiMassageButton(
                 text: "Confirm",
                 isPrimary: true,
-                onPressed: () {
-                  Get.toNamed("/logIn"); // Navigate back to login page
+                isLoading: controller.isLoading.value,
+                onPressed: controller.isLoading.value
+                    ? () {}
+                    : () {
+                  if (email.isEmpty) {
+                    Get.snackbar('Error', 'Email not provided.', backgroundColor: Colors.red, colorText: Colors.white);
+                    return;
+                  }
+                  controller.resetPassword(
+                    email: email,
+                    newPassword: newPasswordController.text.trim(),
+                    confirmPassword: confirmPasswordController.text.trim(),
+                    context: context,
+                  );
                 },
-              ),
-        
+                backgroundColor: controller.isLoading.value ? primaryButtonColor: null,
+                textColor: controller.isLoading.value ? Colors.white : null,
+              )),
             ],
           ),
         ),

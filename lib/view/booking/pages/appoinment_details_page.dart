@@ -1,3 +1,4 @@
+// Updated appoinment_details_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
@@ -5,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:thi_massage/view/widgets/app_logger.dart';
 import 'package:thi_massage/api/api_service.dart';
+import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
 import 'package:thi_massage/view/widgets/custom_snackbar.dart';
 import 'package:toastification/toastification.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,7 +15,8 @@ class AppointmentDetailScreen extends StatefulWidget {
   const AppointmentDetailScreen({super.key});
 
   @override
-  State<AppointmentDetailScreen> createState() => _AppointmentDetailScreenState();
+  State<AppointmentDetailScreen> createState() =>
+      _AppointmentDetailScreenState();
 }
 
 class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
@@ -34,8 +37,9 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
     final arguments = Get.arguments as Map<String, dynamic>?;
     final bookingId = arguments?['booking_id'] as int? ?? 0;
     final therapistId = arguments?['therapist_user_id'] as int? ?? 0;
-    AppLogger.debug('Booking ID: $bookingId, Therapist ID: $therapistId');
-    final therapistNameFallback = arguments?['therapist_name'] as String? ?? 'Unknown Therapist';
+    AppLogger.debug('----------Booking ID: $bookingId, ---------------Therapist ID: $therapistId');
+    final therapistNameFallback =
+        arguments?['therapist_name'] as String? ?? 'Unknown Therapist';
 
     if (bookingId == 0) {
       setState(() {
@@ -96,7 +100,9 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final arguments = Get.arguments as Map<String, dynamic>?;
-    final therapistNameFallback = arguments?['therapist_name'] as String? ?? 'Unknown Therapist';
+    final bookingId = arguments?['booking_id'] as int? ?? 0; // Added for navigation
+    final therapistNameFallback =
+        arguments?['therapist_name'] as String? ?? 'Unknown Therapist';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -117,12 +123,15 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
               onPressed: fetchBookingDetails,
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryButtonColor,
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                padding: EdgeInsets.symmetric(
+                    horizontal: 20.w, vertical: 12.h),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r)),
               ),
               child: Text(
                 'Retry',
-                style: TextStyle(fontSize: 16.sp, color: Colors.white),
+                style:
+                TextStyle(fontSize: 16.sp, color: Colors.white),
               ),
             ),
           ],
@@ -149,59 +158,67 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                   painter: CurveShapePainter(),
                 ),
               ),
-              SafeArea(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 12.h),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      IconButton(
-                        onPressed: Get.back,
-                        icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                      ),
-                      SizedBox(height: 5.h),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 15),
-                        child: SizedBox(
-                          width: 0.4.sw,
-                          child: Text(
-                            bookingDetails!['massage_type'] ?? 'Thai Massage',
-                            style: TextStyle(
-                              fontSize: 30.sp,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              fontFamily: "PlayfairDisplay",
-                            ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                    horizontal: 18.w, vertical: 0.07.sh),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    IconButton(
+                      onPressed: Get.back,
+                      icon: const Icon(Icons.arrow_back_ios,
+                          color: Colors.white),
+                    ),
+                    SizedBox(height: 5.h),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 15),
+                      child: SizedBox(
+                        width: 0.6.sw,
+                        child: Text(
+                          bookingDetails!['massage_type'] ??
+                              'Not Found',
+                          style: TextStyle(
+                            fontSize: 30.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontFamily: "PlayfairDisplay",
                           ),
                         ),
                       ),
-                      SizedBox(height: 4.h),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 15),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "${_capitalizeFirst(bookingDetails!['preference'] ?? 'single')} at ${bookingDetails!['location_type'] ?? 'Home'}",
-                              style: TextStyle(fontSize: 14.sp, color: Colors.white70),
+                    ),
+                    SizedBox(height: 4.h),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 15),
+                      child: Row(
+                        mainAxisAlignment:
+                        MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "${_capitalizeFirst(bookingDetails!['preference'] ?? 'Not Found')} at ${bookingDetails!['location_type'] ?? 'Not Found'}",
+                            style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.white70),
+                          ),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 12.w, vertical: 6.h),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(50),
+                              borderRadius:
+                              BorderRadius.circular(20.r),
                             ),
-                            Container(
-                              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withAlpha(50),
-                                borderRadius: BorderRadius.circular(20.r),
-                              ),
-                              child: Text(
-                                bookingDetails!['status'] ?? 'Upcoming',
-                                style: const TextStyle(
-                                    color: Colors.white, fontWeight: FontWeight.w500),
-                              ),
+                            child: Text(
+                              bookingDetails!['status'] ??
+                                  'Not Found',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -216,26 +233,43 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                 children: [
                   /// Therapist
                   Text("Therapist",
-                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
-                  SizedBox(height: 10.h),
+                      style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w600)),
+                  SizedBox(height: 5.h),
                   Row(
                     children: [
                       CircleAvatar(
                         radius: 24.r,
+                        backgroundColor: Colors.grey[200],
                         child: ClipOval(
                           child: CachedNetworkImage(
-                            imageUrl: bookingDetails!['therapist']['image']?.isNotEmpty == true
-                                ? bookingDetails!['therapist']['image'].startsWith('http')
-                                ? bookingDetails!['therapist']['image']
+                            imageUrl: bookingDetails!['therapist']
+                            ['image']
+                                ?.isNotEmpty ==
+                                true
+                                ? bookingDetails!['therapist']
+                            ['image']
+                                .startsWith('http')
+                                ? bookingDetails!['therapist']
+                            ['image']
                                 : '${ApiService.baseUrl}/therapist${bookingDetails!['therapist']['image']}'
                                 : '',
                             fit: BoxFit.cover,
-                            placeholder: (context, url) => const CircularProgressIndicator(),
+                            width: 48.r,
+                            height: 48.r,
+                            placeholder: (context, url) =>
+                            const Center(
+                                child:
+                                CircularProgressIndicator()),
                             errorWidget: (context, url, error) {
-                              AppLogger.error('Image load error: $error, URL: $url');
+                              AppLogger.error(
+                                  'Image load error: $error, URL: $url');
                               return Image.asset(
                                 'assets/images/fevTherapist1.png',
                                 fit: BoxFit.cover,
+                                width: 48.r,
+                                height: 48.r,
                               );
                             },
                           ),
@@ -248,12 +282,18 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                           Row(
                             children: [
                               Text(
-                                bookingDetails!['therapist']['name'] ?? therapistNameFallback,
-                                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                                bookingDetails!['therapist']
+                                ['name'] ??
+                                    therapistNameFallback,
+                                style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600),
                               ),
                               SizedBox(width: 4.w),
                               SvgPicture.asset(
-                                bookingDetails!['therapist']['gender'] == 'male'
+                                bookingDetails!['therapist']
+                                ['gender'] ==
+                                    'male'
                                     ? "assets/svg/male.svg"
                                     : "assets/svg/female.svg",
                                 width: 16.w,
@@ -262,23 +302,35 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                             ],
                           ),
                           Text(
-                            bookingDetails!['therapist']['role'] ?? 'Therapist',
-                            style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                            bookingDetails!['therapist']['role'] ??
+                                'Therapist',
+                            style: TextStyle(
+                                fontSize: 12.sp, color: Colors.grey),
                           ),
                         ],
                       ),
                       const Spacer(),
                       InkWell(
                         onTap: () {
-                          Get.toNamed("/liveTrackingPage", arguments: {
-                            'booking_id': arguments?['booking_id'],
-                          });
+                          Get.toNamed("/liveTrackingPage",
+                              arguments: {
+                                'booking_id': bookingId,
+                              });
                         },
-                        child: SvgPicture.asset("assets/svg/location.svg"),
+                        child: SvgPicture.asset(
+                            "assets/svg/location.svg"),
                       ),
                       SizedBox(width: 8.w),
                       InkWell(
                         onTap: () {
+                          if (bookingDetails == null || bookingDetails!['therapist'] == null || bookingDetails!['therapist']['therapist_user_id'] == null) {
+                            CustomSnackBar.show(
+                              context,
+                              'Unable to start chat: Therapist details not available.',
+                              type: ToastificationType.error,
+                            );
+                            return;
+                          }
                           final therapistImage = bookingDetails!['therapist']['image']?.isNotEmpty == true
                               ? bookingDetails!['therapist']['image'].startsWith('http')
                               ? bookingDetails!['therapist']['image']
@@ -286,7 +338,7 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                               : 'assets/images/fevTherapist1.png';
                           Get.toNamed("/chatDetailsPage", arguments: {
                             'name': bookingDetails!['therapist']['name'] ?? therapistNameFallback,
-                            'therapist_user_id': arguments?['therapist_user_id'] ?? "1",
+                            'therapist_user_id': bookingDetails!['therapist']['therapist_user_id'],
                             'image': therapistImage,
                           });
                         },
@@ -295,16 +347,18 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                     ],
                   ),
 
-                  SizedBox(height: 24.h),
+                  SizedBox(height: 12.h),
 
                   /// Duration
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Duration",
-                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+                          style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.w600)),
                       Text(
-                        bookingDetails!['duration'] ?? '60 min',
+                        bookingDetails!['duration'] ?? '00 min',
                         style: TextStyle(
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w600,
@@ -312,40 +366,48 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 8.h),
+                  SizedBox(height: 2.h),
                   Slider(
                     value: double.tryParse(
-                        (bookingDetails!['duration'] ?? '60 min').replaceAll(' min', '')) ??
-                        60,
+                        (bookingDetails!['duration'] ?? '00 min')
+                            .replaceAll(' min', '')) ??
+                        00,
                     min: 30,
                     max: 120,
                     activeColor: primaryTextColor,
                     inactiveColor: Colors.grey[200],
-                    onChanged: (_) {}, // Disabled as it's display-only
+                    onChanged:
+                        (_) {}, // Disabled as it's display-only
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("30 min",
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey)),
+                          style: TextStyle(
+                              fontSize: 12.sp, color: Colors.grey)),
                       Text("120 min",
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey)),
+                          style: TextStyle(
+                              fontSize: 12.sp, color: Colors.grey)),
                     ],
                   ),
 
-                  SizedBox(height: 20.h),
+                  SizedBox(height: 10.h),
 
                   /// Date & Time
                   Row(
                     children: [
-                      Icon(Icons.calendar_month, color: primaryTextColor, size: 40),
+                      Icon(Icons.calendar_month,
+                          color: primaryTextColor, size: 40),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text("Date Scheduled",
-                              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500)),
+                              style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w500)),
                           Text(
-                            bookingDetails!['scheduled_date'] ?? 'N/A',
+                            bookingDetails!['scheduled_date'] ??
+                                'N/A',
                             style: TextStyle(
                                 fontSize: 15.sp,
                                 fontWeight: FontWeight.w600,
@@ -353,15 +415,19 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(width: 0.15.sw),
-                      Icon(Icons.access_time, color: primaryTextColor, size: 40),
+                      Spacer(),
+                      Icon(Icons.access_time,
+                          color: primaryTextColor, size: 40),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text("Time Scheduled",
-                              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500)),
+                              style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w500)),
                           Text(
-                            bookingDetails!['scheduled_time'] ?? 'N/A',
+                            bookingDetails!['scheduled_time'] ??
+                                'N/A',
                             style: TextStyle(
                                 fontSize: 15.sp,
                                 fontWeight: FontWeight.w600,
@@ -376,14 +442,43 @@ class _AppointmentDetailScreenState extends State<AppointmentDetailScreen> {
 
                   /// Payment section
                   Text("Payment Detail",
-                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w600)),
                   SizedBox(height: 8.h),
                   Text(
-                    "• Massage Fee: \$${bookingDetails!['payment_detail']['massage_fee'].toStringAsFixed(1)}\n"
-                        "• Booking Fee: \$${bookingDetails!['payment_detail']['booking_fee'].toStringAsFixed(1)}\n"
-                        "• Tip: \$${bookingDetails!['payment_detail']['tip_fee'].toStringAsFixed(1)}\n"
-                        "• Total: \$${((bookingDetails!['payment_detail']['massage_fee'] as double) + (bookingDetails!['payment_detail']['booking_fee'] as double) + (bookingDetails!['payment_detail']['tip_fee'] as double)).toStringAsFixed(1)}",
+                    "â€¢ Massage Fee: \$${bookingDetails!['payment_detail']['massage_fee'].toStringAsFixed(1)}\n"
+                        "â€¢ Booking Fee: \$${bookingDetails!['payment_detail']['booking_fee'].toStringAsFixed(1)}\n"
+                        "â€¢ Tip: \$${bookingDetails!['payment_detail']['tip_fee'].toStringAsFixed(1)}\n"
+                        "â€¢ Total: \$${((bookingDetails!['payment_detail']['massage_fee'] as double) + (bookingDetails!['payment_detail']['booking_fee'] as double) + (bookingDetails!['payment_detail']['tip_fee'] as double)).toStringAsFixed(1)}",
                     style: TextStyle(fontSize: 13.sp),
+                  ),
+                  SizedBox(height: 20.h),
+                  CustomGradientButton(
+                    text: "My Symptoms",
+                    onPressed: () {
+                      if (bookingId == 0) {
+                        CustomSnackBar.show(
+                          context,
+                          'Invalid booking ID',
+                          type: ToastificationType.error,
+                        );
+                        return;
+                      }
+                      Get.toNamed("/medicalQuestionnaireScreen",
+                          arguments: {
+                            'booking_id': bookingId,
+                          });
+                    },
+                  ),
+                  Text(
+                    "Fill out a short form to inform your therapist about your physical condition",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Urbanist',
+                        color: primaryButtonColor),
                   ),
                 ],
               ),
@@ -405,8 +500,10 @@ class CurveShapePainter extends CustomPainter {
 
     final path = Path()
       ..moveTo(0, size.height * 0.7)
-      ..quadraticBezierTo(size.width * 0.25, size.height * 0.85, size.width * 0.5, size.height * 0.7)
-      ..quadraticBezierTo(size.width * 0.75, size.height * 0.55, size.width, size.height * 0.7)
+      ..quadraticBezierTo(size.width * 0.25, size.height * 0.85,
+          size.width * 0.5, size.height * 0.7)
+      ..quadraticBezierTo(
+          size.width * 0.75, size.height * 0.55, size.width, size.height * 0.7)
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();

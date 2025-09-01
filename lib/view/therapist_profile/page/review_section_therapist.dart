@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/view/widgets/custom_button.dart';
 import '../../../api/api_service.dart';
+import '../../../controller/auth_controller.dart';
 import '../../../themes/colors.dart';
-import '../../widgets/custom_appbar.dart';
+
 import '../../widgets/app_logger.dart';
 
 class TherapistProfilePage extends StatefulWidget {
@@ -26,44 +28,22 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
   bool _isDrawerOpen = false;
   double _dragStartX = 0;
   Map<String, dynamic>? _therapistProfile;
+  List<Map<String, dynamic>> _reviews = [];
   bool _isLoadingProfile = true;
   String? _profileErrorMessage;
+  int? _selectedReviewId; // Track the selected review ID for response
+  String _responseText = ''; // Store the response text
   final ApiService _apiService = ApiService();
+  final AuthController authController = Get.find<AuthController>();
   final _storage = const FlutterSecureStorage();
   String? _selectedDrawerItem;
-
-  // Demo review data matching the image
-  final List<Map<String, dynamic>> reviews = [
-    {
-      'name': 'Sarah M.',
-      'rating': 5,
-      'time': '21 mins ago',
-      'comment':
-      'Amazing experience! The therapist was professional and very skilled. I felt completely relaxed and refreshed after my session. Will book again!',
-      'image': 'assets/images/review_avatar_1.png',
-    },
-    {
-      'name': 'David J.',
-      'rating': 4,
-      'time': '2 days ago',
-      'comment':
-      'Great massage! The pressure was just right, and the therapist was very polite. Only reason for 4 stars is that they arrived 10 minutes late.',
-      'image': 'assets/images/review_avatar_2.png',
-    },
-    {
-      'name': 'Jane Cooper',
-      'rating': 5,
-      'time': '2 days ago',
-      'comment': 'One of the best massages I\'ve ever had! Highly recommended!',
-      'image': 'assets/images/review_avatar_3.png',
-    },
-  ];
+  final GlobalKey _reviewsListKey = GlobalKey(); // Key to scroll to the reviews list
 
   List<Map<String, dynamic>> get displayReviews {
     if (showAllReviews) {
-      return reviews;
+      return _reviews;
     } else {
-      return reviews.take(initialReviewLimit).toList();
+      return _reviews.take(initialReviewLimit).toList();
     }
   }
 
@@ -84,28 +64,58 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
-    // Fetch therapist profile for the drawer
-    _fetchTherapistProfile();
+    // Fetch therapist profile and reviews
+    _fetchTherapistData();
   }
 
-  Future<void> _fetchTherapistProfile() async {
+  Future<void> _fetchTherapistData() async {
     setState(() {
       _isLoadingProfile = true;
       _profileErrorMessage = null;
     });
     try {
-      final profile = await _apiService.getTherapistOwnProfile();
+      final data = await _apiService.getTherapistReviews();
       setState(() {
-        _therapistProfile = profile;
+        _therapistProfile = data['therapist'];
+        _reviews = List<Map<String, dynamic>>.from(data['reviews'] ?? []);
         _isLoadingProfile = false;
       });
-      AppLogger.debug('Therapist Profile: $profile');
+      AppLogger.debug('Therapist Data: $data');
     } catch (e) {
       setState(() {
         _isLoadingProfile = false;
-        _profileErrorMessage = 'Failed to load profile: $e';
+        _profileErrorMessage = 'Failed to load data: $e';
       });
-      AppLogger.error('Failed to fetch therapist profile: $e');
+      AppLogger.error('Failed to fetch therapist data: $e');
+    }
+  }
+
+  Future<void> _submitResponse() async {
+    if (_selectedReviewId == null || _responseText.isEmpty) return;
+
+    setState(() {
+      _isLoadingProfile = true;
+      _profileErrorMessage = null;
+    });
+
+    try {
+      final response = await _apiService.submitReviewResponse(_selectedReviewId!, _responseText);
+      setState(() {
+        _isLoadingProfile = false;
+        final index = _reviews.indexWhere((review) => review['id'] == _selectedReviewId);
+        if (index != -1) {
+          _reviews[index] = {..._reviews[index], 'response': response['response']};
+        }
+        _selectedReviewId = null;
+        _responseText = '';
+      });
+      AppLogger.debug('Response submitted: $response');
+    } catch (e) {
+      setState(() {
+        _isLoadingProfile = false;
+        _profileErrorMessage = 'Failed to submit response: $e';
+      });
+      AppLogger.error('Failed to submit response: $e');
     }
   }
 
@@ -132,7 +142,6 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
           _selectedDrawerItem = title;
         });
         toggleDrawer();
-        // Navigate to the route unless it's the current page
         if (route != "/reviewsRatings" || title == "Home") {
           Get.offNamed(route);
         }
@@ -166,6 +175,7 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true, // Allow the screen to resize when the keyboard appears
       backgroundColor: Colors.white,
       body: GestureDetector(
         onHorizontalDragStart: (details) => _dragStartX = details.globalPosition.dx,
@@ -197,17 +207,17 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                 children: [
                   CircleAvatar(
                     backgroundImage: _therapistProfile?['image'] != null
-                        ? NetworkImage(_therapistProfile!['image'])
+                        ? CachedNetworkImageProvider('${ApiService.baseUrl}${_therapistProfile!['image']}')
                         : const AssetImage("assets/images/profilepic.png") as ImageProvider,
                     radius: 40.r,
                   ),
                   SizedBox(height: 12.h),
                   Text(
-                    _therapistProfile?['full_name'] ?? 'Therapist Name',
+                    _therapistProfile?['name'] ?? 'Therapist Name',
                     style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   Text(
-                    _therapistProfile?['assign_role'] ?? 'Massage Therapist',
+                    _therapistProfile?['role'] ?? 'Massage Therapist',
                     style: TextStyle(fontSize: 13.sp, color: Colors.white70),
                   ),
                   SizedBox(height: 30.h),
@@ -220,9 +230,11 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                   const Spacer(),
                   GestureDetector(
                     onTap: () async {
-                      await _storage.delete(key: 'user_id');
-                      await _storage.delete(key: 'access_token');
-                      Get.offAllNamed('/login');
+                      try {
+                        await authController.logout();
+                      } catch (e) {
+                        AppLogger.error('Failed to logout: $e');
+                      }
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
@@ -278,7 +290,7 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                                 ),
                                 SizedBox(height: 10.h),
                                 ElevatedButton.icon(
-                                  onPressed: _fetchTherapistProfile,
+                                  onPressed: _fetchTherapistData,
                                   icon: const Icon(Icons.refresh),
                                   label: Text(
                                     'Retry',
@@ -295,210 +307,85 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                             ),
                           ),
                         )
-                            : Column(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  // Header with therapist info
-                                  Container(
-                                    height: 0.4.sh,
-                                    clipBehavior: Clip.hardEdge,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.only(
-                                        bottomLeft: Radius.circular(24.r),
-                                        bottomRight: Radius.circular(24.r),
-                                      ),
-                                      image: const DecorationImage(
-                                        image: AssetImage("assets/images/img.png"),
-                                        fit: BoxFit.fill,
-                                      ),
-                                    ),
-                                    child: Stack(
-                                      children: [
-                                        Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 20.w),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              SizedBox(height: 0.05.sh),
-                                              Row(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  // Left side with therapist info
-                                                  Expanded(
-                                                    flex: 3,
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        SizedBox(height: 0.04.sh),
-                                                        Text(
-                                                          "Mical",
-                                                          style: TextStyle(
-                                                            fontSize: 32.sp,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: Colors.white,
-                                                            fontFamily: "PlayfairDisplay",
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          "Martinez",
-                                                          style: TextStyle(
-                                                            fontSize: 32.sp,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: Colors.white,
-                                                            fontFamily: "PlayfairDisplay",
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          "Therapist",
-                                                          style: TextStyle(fontSize: 16.sp, color: Colors.white),
-                                                        ),
-                                                        SizedBox(height: 0.03.sh),
-                                                        Text.rich(
-                                                          TextSpan(
-                                                            text: "102",
-                                                            style: TextStyle(
-                                                              fontSize: 32.sp,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: Colors.white,
-                                                            ),
-                                                            children: [
-                                                              TextSpan(
-                                                                text: " Sessions\n",
-                                                                style: TextStyle(fontSize: 16.sp),
-                                                              ),
-                                                              TextSpan(
-                                                                text: "Since 15 Apr 2022",
-                                                                style: TextStyle(
-                                                                  fontSize: 14.sp,
-                                                                  color: Colors.white,
-                                                                  fontWeight: FontWeight.normal,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  // Right side with therapist image
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Positioned(
-                                          top: 105,
-                                          bottom: 32,
-                                          right: 0,
-                                          left: 160,
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(38.r),
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(12.r),
-                                              ),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(12.r),
-                                                child: Image.asset(
-                                                  "assets/images/therapist_man.png",
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                            : SingleChildScrollView( // Full page scrollable
+                          child: Column(
+                            children: [
+                              // Header with therapist info
+                              Container(
+                                height: 0.4.sh,
+                                clipBehavior: Clip.hardEdge,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.only(
+                                    bottomLeft: Radius.circular(24.r),
+                                    bottomRight: Radius.circular(24.r),
                                   ),
-                                  // Reviews and rating section
-                                  Expanded(
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: Radius.circular(0),
-                                          topRight: Radius.circular(0),
-                                        ),
-                                      ),
+                                  image: const DecorationImage(
+                                    image: AssetImage("assets/images/img.png"),
+                                    fit: BoxFit.fill,
+                                  ),
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 20.w),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 20.w),
-                                            child: Text(
-                                              "Reviews & Rating",
-                                              style: TextStyle(
-                                                fontSize: 18.sp,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 10.h),
-                                          // Rating bars
-                                          Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 20.w),
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: reviewCardColor,
-                                                borderRadius: BorderRadius.circular(12.r),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.grey.withOpacity(0.2),
-                                                    spreadRadius: 1,
-                                                    blurRadius: 5,
-                                                    offset: const Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Padding(
-                                                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-                                                child: Row(
+                                          SizedBox(height: 0.05.sh),
+                                          Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Left side with therapist info
+                                              Expanded(
+                                                flex: 3,
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    // Rating bars
-                                                    Expanded(
-                                                      flex: 3,
-                                                      child: Column(
-                                                        children: [
-                                                          _buildRatingBar(5, 0.7),
-                                                          _buildRatingBar(4, 0.5),
-                                                          _buildRatingBar(3, 0.2),
-                                                          _buildRatingBar(2, 0.1),
-                                                          _buildRatingBar(1, 0.05),
-                                                        ],
+                                                    SizedBox(height: 0.04.sh),
+                                                    Text(
+                                                      _therapistProfile?['name'].split(' ').first ?? 'Therapist',
+                                                      style: TextStyle(
+                                                        fontSize: 32.sp,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
+                                                        fontFamily: "PlayfairDisplay",
                                                       ),
                                                     ),
-                                                    // Average rating display
-                                                    Padding(
-                                                      padding: const EdgeInsets.all(8.0),
-                                                      child: Column(
+                                                    Text(
+                                                      _therapistProfile?['name'].split(' ').length > 1
+                                                          ? _therapistProfile!['name'].split(' ').last
+                                                          : '',
+                                                      style: TextStyle(
+                                                        fontSize: 32.sp,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
+                                                        fontFamily: "PlayfairDisplay",
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      _therapistProfile?['role'] ?? 'Therapist',
+                                                      style: TextStyle(fontSize: 16.sp, color: Colors.white),
+                                                    ),
+                                                    SizedBox(height: 0.03.sh),
+                                                    Text.rich(
+                                                      TextSpan(
+                                                        text: _therapistProfile?['sessions'].toString() ?? '0',
+                                                        style: TextStyle(
+                                                          fontSize: 32.sp,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: Colors.white,
+                                                        ),
                                                         children: [
-                                                          Text(
-                                                            "4.0",
-                                                            style: TextStyle(
-                                                              fontSize: 24.sp,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: const Color(0xFFB48D3C),
-                                                            ),
+                                                          TextSpan(
+                                                            text: " Sessions\n",
+                                                            style: TextStyle(fontSize: 16.sp),
                                                           ),
-                                                          Row(
-                                                            mainAxisAlignment: MainAxisAlignment.center,
-                                                            children: List.generate(
-                                                              5,
-                                                                  (index) => Icon(
-                                                                Icons.star,
-                                                                size: 12.sp,
-                                                                color: index < 4 ? starColor : Colors.grey.shade300,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          SizedBox(height: 4.h),
-                                                          Text(
-                                                            "52 Reviews",
+                                                          TextSpan(
+                                                            text: _therapistProfile?['joined'] ?? 'Since Unknown',
                                                             style: TextStyle(
-                                                              fontSize: 12.sp,
-                                                              color: Colors.black,
+                                                              fontSize: 14.sp,
+                                                              color: Colors.white,
+                                                              fontWeight: FontWeight.normal,
                                                             ),
                                                           ),
                                                         ],
@@ -507,21 +394,146 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                                                   ],
                                                 ),
                                               ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 10.h),
-                                          // Reviews list
-                                          Expanded(
-                                            child: _buildReviewsList(),
+                                            ],
                                           ),
                                         ],
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    Positioned(
+                                      top: 105,
+                                      bottom: 32,
+                                      right: 0,
+                                      left: 160,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(38.r),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(12.r),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(12.r),
+                                            child: CachedNetworkImage(
+                                              imageUrl: '${ApiService.baseUrl}${_therapistProfile?['image']}',
+                                              fit: BoxFit.cover,
+                                              placeholder: (context, url) => Center(child: const CircularProgressIndicator()),
+                                              errorWidget: (context, url, error) => Image.asset(
+                                                "assets/images/therapist_man.png",
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                              // Reviews and rating section
+                              Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(0),
+                                    topRight: Radius.circular(0),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                                      child: Text(
+                                        "Reviews & Rating",
+                                        style: TextStyle(
+                                          fontSize: 18.sp,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: 10.h),
+                                    // Rating bars
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: reviewCardColor,
+                                          borderRadius: BorderRadius.circular(12.r),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.grey.withOpacity(0.2),
+                                              spreadRadius: 1,
+                                              blurRadius: 5,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+                                          child: Row(
+                                            children: [
+                                              // Rating bars
+                                              Expanded(
+                                                flex: 3,
+                                                child: Column(
+                                                  children: [
+                                                    _buildRatingBar(5, 0.7), // Adjust percentages based on API data
+                                                    _buildRatingBar(4, 0.5),
+                                                    _buildRatingBar(3, 0.2),
+                                                    _buildRatingBar(2, 0.1),
+                                                    _buildRatingBar(1, 0.05),
+                                                  ],
+                                                ),
+                                              ),
+                                              // Average rating display
+                                              Padding(
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: Column(
+                                                  children: [
+                                                    Text(
+                                                      _therapistProfile?['rating'].toString() ?? '0.0',
+                                                      style: TextStyle(
+                                                        fontSize: 24.sp,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: const Color(0xFFB48D3C),
+                                                      ),
+                                                    ),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: List.generate(
+                                                        5,
+                                                            (index) => Icon(
+                                                          Icons.star,
+                                                          size: 12.sp,
+                                                          color: index < (_therapistProfile?['rating']?.round() ?? 0)
+                                                              ? starColor
+                                                              : Colors.grey.shade300,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(height: 4.h),
+                                                    Text(
+                                                      "${_reviews.length} Reviews",
+                                                      style: TextStyle(
+                                                        fontSize: 12.sp,
+                                                        color: Colors.black,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: 10.h),
+                                    // Reviews list
+                                    _buildReviewsList(),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -536,6 +548,7 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
   }
 
   Widget _buildRatingBar(int rating, double percentage) {
+    // Note: You may want to calculate the percentage dynamically based on the API data
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4.h),
       child: Row(
@@ -589,11 +602,14 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
 
   Widget _buildReviewsList() {
     return ListView.separated(
+      key: _reviewsListKey, // Assign the global key
+      shrinkWrap: true, // Allow the ListView to take only the space it needs
+      physics: const NeverScrollableScrollPhysics(), // Disable internal scrolling
       padding: EdgeInsets.symmetric(horizontal: 20.w),
-      itemCount: displayReviews.length + 1, // +1 for the "View all" button
+      itemCount: displayReviews.length + (_reviews.length > initialReviewLimit ? 1 : 0),
       separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade200),
       itemBuilder: (context, index) {
-        if (index == displayReviews.length) {
+        if (index == displayReviews.length && _reviews.length > initialReviewLimit) {
           // "View all" button
           return Center(
             child: TextButton(
@@ -624,7 +640,9 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                 children: [
                   CircleAvatar(
                     radius: 20.r,
-                    backgroundImage: AssetImage(review['image']),
+                    backgroundImage: review['client_image'] != null
+                        ? CachedNetworkImageProvider('${ApiService.baseUrl}${review['client_image']}')
+                        : const AssetImage('assets/images/profilepic.png') as ImageProvider,
                   ),
                   SizedBox(width: 12.w),
                   Expanded(
@@ -632,7 +650,7 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          review['name'],
+                          review['client_name'],
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp),
                         ),
                         SizedBox(height: 2.h),
@@ -650,7 +668,7 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                             ),
                             SizedBox(width: 8.w),
                             Text(
-                              review['time'],
+                              review['time_ago'],
                               style: TextStyle(color: Colors.grey, fontSize: 12.sp),
                             ),
                           ],
@@ -661,7 +679,6 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                   IconButton(
                     icon: Icon(Icons.more_vert, color: Colors.grey, size: 20.sp),
                     onPressed: () {
-                      // Show options menu
                       showModalBottomSheet(
                         context: context,
                         builder: (context) => Column(
@@ -672,6 +689,16 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
                               title: const Text('Response'),
                               onTap: () {
                                 Navigator.pop(context);
+                                setState(() {
+                                  _selectedReviewId = review['id'];
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    Scrollable.ensureVisible(
+                                      _reviewsListKey.currentContext!,
+                                      alignment: 0.5,
+                                      duration: const Duration(milliseconds: 300),
+                                    );
+                                  });
+                                });
                               },
                             ),
                             ListTile(
@@ -690,9 +717,48 @@ class _TherapistProfilePageState extends State<TherapistProfilePage>
               ),
               SizedBox(height: 8.h),
               Text(
-                review['comment'],
+                review['review'],
                 style: TextStyle(fontSize: 14.sp, color: Colors.black87, height: 1.4),
               ),
+              if (_selectedReviewId == review['id'])
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Response',
+                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 8.h),
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Enter your response...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                        ),
+                        maxLines: 3,
+                        onChanged: (value) => setState(() => _responseText = value),
+                      ),
+                      SizedBox(height: 8.h),
+                      ThaiMassageButton(
+                        text: 'Submit',
+                        onPressed: _submitResponse,),
+
+                    ],
+                  ),
+                ),
+              if (review['response'] != null)
+                Padding(
+                  padding: EdgeInsets.only(top: 8.h),
+                  child: Text(
+                    'Response: ${review['response']}',
+                    style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+                  ),
+                ),
             ],
           ),
         );

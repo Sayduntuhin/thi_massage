@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
+import 'package:thi_massage/routers/app_router.dart';
 import 'package:thi_massage/view/widgets/custom_gradientButton.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_appbar.dart';
@@ -43,7 +44,7 @@ class ReviewSubmittedPage extends StatelessWidget {
               /// Contact Support Button
               CustomGradientButton(text: "Contact Support", onPressed: () {
                 // Navigate or open chat/help
-                Get.toNamed("/logIn");
+                Get.toNamed(Routes.supportPage);
               },),
               SizedBox(height: 40.h),
             ],

@@ -19,11 +19,11 @@ class MinimalLoadingScreen extends StatelessWidget {
   }
 }
 class LoadingManager {
-  static bool _isLoading = false;
+  static bool isLoading = false;
 
   static void showLoading() {
-    if (!_isLoading) {
-      _isLoading = true;
+    if (!isLoading) {
+      isLoading = true;
       Get.dialog(
         const MinimalLoadingScreen(),
         barrierDismissible: false,
@@ -33,8 +33,8 @@ class LoadingManager {
   }
 
   static void hideLoading() {
-    if (_isLoading) {
-      _isLoading = false;
+    if (isLoading) {
+      isLoading = false;
       Get.back();
     }
   }

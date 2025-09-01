@@ -32,7 +32,7 @@ class PaymentOptionsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.4,
+      initialChildSize: 0.45,
       minChildSize: 0.3,
       maxChildSize: 0.6,
       builder: (context, scrollController) {

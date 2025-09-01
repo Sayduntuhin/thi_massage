@@ -12,6 +12,10 @@ import 'package:thi_massage/routers/app_router.dart';
 import 'package:thi_massage/firebase_options.dart';
 import 'package:toastification/toastification.dart';
 import 'controller/coustomer_preferences_controller.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'controller/location_controller.dart';
+import 'controller/notifications_controller.dart';
+import 'controller/web_socket_controller.dart';
 
 void main() async {
   var logger = Logger();
@@ -19,14 +23,37 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await GetStorage.init(); // Initialize GetStorage
+  await GetStorage.init();
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('app_icon');
+  const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+  );
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: androidSettings,
+    iOS: iosSettings,
+  );
+
+  try {
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    logger.d('flutter_local_notifications initialized successfully');
+  } catch (e) {
+    logger.e('Failed to initialize flutter_local_notifications: $e');
+  }
 
   // Initialize controllers in correct order
   Get.put(ApiService());
   Get.put(AuthService());
-  Get.put(UserTypeController(), permanent: true); // Register UserTypeController before AuthController
+  Get.put(UserTypeController(), permanent: true);
   Get.put(AuthController());
+  Get.put(WebSocketController());
+  Get.put(LocationController());
   Get.put(CustomerPreferencesController());
+  Get.put(flutterLocalNotificationsPlugin);
+  Get.put(NotificationSocketController());
 
   // Check authentication state
   final AuthController authController = Get.find<AuthController>();

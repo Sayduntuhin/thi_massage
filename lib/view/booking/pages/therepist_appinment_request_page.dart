@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import '../../../api/api_service.dart';
 import '../../../controller/location_controller.dart';
@@ -10,7 +11,7 @@ import '../../../themes/colors.dart';
 import '../../widgets/app_logger.dart';
 import '../../widgets/custom_snackbar.dart';
 import 'package:toastification/toastification.dart';
-import '../../widgets/loading_indicator.dart'; // Added for LoadingManager
+import '../../widgets/loading_indicator.dart';
 
 class AppointmentRequestPage extends StatefulWidget {
   const AppointmentRequestPage({super.key});
@@ -35,7 +36,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
   bool _isLoading = true;
   String? _errorMessage;
   String? _locationName;
-  final String _baseurl = ApiService.baseUrl; // Replace with your base URL
+  final String _baseurl = ApiService.baseUrl;
 
   @override
   void initState() {
@@ -52,7 +53,55 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     AppLogger.debug('AppointmentRequestPage initialized');
   }
 
+  Future<bool> _checkLocationPermission() async {
+    try {
+      var status = await Permission.locationWhenInUse.status;
+      AppLogger.debug('Location permission status: $status');
+      if (status.isGranted) {
+        return true;
+      }
+      if (status.isDenied || status.isPermanentlyDenied) {
+        AppLogger.error('Location permission denied: ${status.toString()}');
+        if (status.isPermanentlyDenied && mounted) {
+          CustomSnackBar.show(
+            context,
+            'Location permission is permanently denied. Please enable it in Settings.',
+            type: ToastificationType.warning,
+          );
+          await openAppSettings();
+        }
+        return false;
+      }
+      // Request permission if not granted
+      status = await Permission.locationWhenInUse.request();
+      AppLogger.debug('Location permission requested, new status: $status');
+      if (status.isGranted) {
+        return true;
+      }
+      if (status.isPermanentlyDenied && mounted) {
+        CustomSnackBar.show(
+          context,
+          'Location permission is permanently denied. Please enable it in Settings.',
+          type: ToastificationType.warning,
+        );
+        await openAppSettings();
+      }
+      return false;
+    } catch (e) {
+      AppLogger.error('Error checking location permission: $e');
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Error checking location permission: $e',
+          type: ToastificationType.error,
+        );
+      }
+      return false;
+    }
+  }
+
   Future<void> _fetchBookingDetails() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -60,54 +109,77 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
     try {
       final arguments = Get.arguments;
       final bookingId = arguments['booking_id'];
-      if (bookingId == null) {
-        throw Exception('Booking ID is missing');
+      if (bookingId == null || bookingId.toString().isEmpty) {
+        throw Exception('Booking ID is missing or invalid');
       }
       AppLogger.debug('Fetching booking details for booking_id: $bookingId');
       final details = await _apiService.getBookingDetailsbByTherapist(bookingId);
       final latitude = details['map']?['latitude']?.toDouble();
       final longitude = details['map']?['longitude']?.toDouble();
-      if (latitude == null || longitude == null) {
-        throw Exception('Invalid location data in response');
+      if (latitude == null || longitude == null || latitude.isNaN || longitude.isNaN) {
+        AppLogger.error('Invalid location data: latitude=$latitude, longitude=$longitude');
+        throw Exception('Invalid or missing location data in response');
       }
-      final coords = '$latitude,$longitude';
-      final address = await _locationController.getAddressFromCoordinatesString(coords);
-      setState(() {
-        _bookingDetails = details;
-        _initialPosition = LatLng(latitude, longitude);
-        _locationName = address;
-        _isLoading = false;
-        // Set progress animation based on duration_minutes
-        final duration = (details['duration_minutes']?.toDouble() ?? 60) / 120;
-        _progressAnimation = Tween<double>(begin: 0, end: duration).animate(
-          CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
-        );
-        _progressController.forward(); // Start animation immediately
-        _updateMarkers();
-      });
+      String? address;
+      // Skip permission check if already granted in TherapistHomePage
+      try {
+        final coords = '$latitude,$longitude';
+        address = await _locationController.getAddressFromCoordinatesString(coords);
+        AppLogger.debug('Address fetched: $address');
+      } catch (e) {
+        AppLogger.error('Error fetching address: $e');
+        address = 'Unable to fetch address';
+      }
+      if (mounted) {
+        setState(() {
+          _bookingDetails = details;
+          _initialPosition = LatLng(latitude, longitude);
+          _locationName = address;
+          _isLoading = false;
+          final duration = (details['duration_minutes']?.toDouble() ?? 60) / 120;
+          _progressAnimation = Tween<double>(begin: 0, end: duration).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
+          );
+          _progressController.forward();
+          _updateMarkers();
+        });
+      }
       await _goToLocation(_initialPosition);
       AppLogger.debug('Booking details fetched: $details');
       AppLogger.debug('Location name: $address');
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to load booking details: $e';
-      });
-      CustomSnackBar.show(
-        context,
-        _errorMessage!,
-        type: ToastificationType.error,
-      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load booking details: $e';
+        });
+        CustomSnackBar.show(
+          context,
+          _errorMessage!,
+          type: ToastificationType.error,
+        );
+      }
       AppLogger.error('Error fetching booking details: $e');
     }
   }
 
   void _setCustomMarkerIcon() async {
-    _customMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
-    if (_markers.isNotEmpty) {
-      setState(() {
-        _updateMarkers();
+    try {
+      _customMarkerIcon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(10, 10)),
+        'assets/images/mark.png',
+      ).onError((error, stackTrace) {
+        AppLogger.error('Failed to load custom marker icon: $error');
+        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
       });
+      if (_markers.isNotEmpty && mounted) {
+        setState(() {
+          _updateMarkers();
+        });
+      }
+    } catch (e) {
+      AppLogger.error('Error setting custom marker icon: $e');
+      _customMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
     }
   }
 
@@ -127,9 +199,11 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
         },
       ),
     );
+    AppLogger.debug('Markers updated for position: $_initialPosition');
   }
 
   void _showLocationInfoDialog() {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -165,12 +239,23 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
   }
 
   void _launchNavigation() {
-    Get.snackbar(
-      'Navigation',
-      'Launching navigation to ${_locationName ?? "appointment location"}...',
-      snackPosition: SnackPosition.BOTTOM,
-    );
-    AppLogger.debug('Launching navigation to: $_initialPosition');
+    try {
+      Get.snackbar(
+        'Navigation',
+        'Launching navigation to ${_locationName ?? "appointment location"}...',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      AppLogger.debug('Launching navigation to: $_initialPosition');
+    } catch (e) {
+      AppLogger.error('Failed to launch navigation: $e');
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Failed to launch navigation: $e',
+          type: ToastificationType.error,
+        );
+      }
+    }
   }
 
   Future<void> _acceptAppointment() async {
@@ -184,9 +269,11 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       final response = await _apiService.updateBookingStatus(bookingId, 'accepted');
       LoadingManager.hideLoading();
       if (response['message'] == 'Appointment accepted successfully.') {
-        setState(() {
-          _isAccepted = true;
-        });
+        if (mounted) {
+          setState(() {
+            _isAccepted = true;
+          });
+        }
         CustomSnackBar.show(
           context,
           'Appointment accepted',
@@ -198,11 +285,13 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       }
     } catch (e) {
       LoadingManager.hideLoading();
-      CustomSnackBar.show(
-        context,
-        'Failed to accept appointment: $e',
-        type: ToastificationType.error,
-      );
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Failed to accept appointment: $e',
+          type: ToastificationType.error,
+        );
+      }
       AppLogger.error('Error accepting appointment: $e');
     }
   }
@@ -230,26 +319,32 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       }
     } catch (e) {
       LoadingManager.hideLoading();
-      CustomSnackBar.show(
-        context,
-        'Failed to reject appointment: $e',
-        type: ToastificationType.error,
-      );
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Failed to reject appointment: $e',
+          type: ToastificationType.error,
+        );
+      }
       AppLogger.error('Error rejecting appointment: $e');
     }
   }
 
   void _onMapTypeButtonPressed() {
-    setState(() {
-      _currentMapType = _currentMapType == MapType.normal ? MapType.satellite : MapType.normal;
-    });
+    if (mounted) {
+      setState(() {
+        _currentMapType = _currentMapType == MapType.normal ? MapType.satellite : MapType.normal;
+      });
+    }
     AppLogger.debug('Map type changed to: $_currentMapType');
   }
 
   void _onTrafficButtonPressed() {
-    setState(() {
-      _showTraffic = !_showTraffic;
-    });
+    if (mounted) {
+      setState(() {
+        _showTraffic = !_showTraffic;
+      });
+    }
     AppLogger.debug('Traffic layer toggled: $_showTraffic');
   }
 
@@ -259,21 +354,27 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
       AppLogger.debug('Google Map created successfully');
     } catch (e) {
       AppLogger.error('Error creating Google Map: $e');
-      _showMapErrorDialog();
+      if (mounted) {
+        _showMapErrorDialog();
+      }
     }
   }
 
   void _showMapErrorDialog() {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Map Error'),
-          content: const Text('There was an error loading the map. Please check your API key configuration.'),
+          content: const Text('There was an error loading the map. Please check your API key configuration and try again.'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _fetchBookingDetails(); // Retry fetching details
+              },
+              child: const Text('Retry'),
             ),
           ],
         );
@@ -303,9 +404,13 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
 
   @override
   void dispose() {
+    _progressController.stop();
     _progressController.dispose();
-    _mapControllerCompleter.future.then((controller) => controller.dispose());
+    _mapControllerCompleter.future.then((controller) => controller.dispose()).catchError((e) {
+      AppLogger.error('Error disposing map controller: $e');
+    });
     super.dispose();
+    AppLogger.debug('AppointmentRequestPage disposed');
   }
 
   @override
@@ -343,10 +448,10 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline, color: Colors.red, size: 48.sp),
+                  Icon(Icons.error_outline, color: Colors.red, size: 55.sp),
                   SizedBox(height: 16.h),
                   Text(
-                    _errorMessage!,
+                    "Something went wrong",
                     style: TextStyle(fontSize: 16.sp, color: Colors.red),
                     textAlign: TextAlign.center,
                   ),
@@ -516,9 +621,12 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                           CircleAvatar(
                             radius: 24.r,
                             backgroundImage: _bookingDetails?['client']?['image'] != null
-                                ? NetworkImage(
-                                '$_baseurl/client${_bookingDetails!['client']['image']}')
-                                : const AssetImage("assets/images/profilepic.png") as ImageProvider,
+                                ? NetworkImage('$_baseurl/client${_bookingDetails!['client']['image']}')
+                            as ImageProvider
+                                : const AssetImage("assets/images/profilepic.png"),
+                            onBackgroundImageError: (exception, stackTrace) {
+                              AppLogger.error('Failed to load client image: $exception');
+                            },
                           ),
                           SizedBox(width: 10.w),
                           Expanded(
@@ -567,7 +675,8 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                           _isAccepted
                               ? GestureDetector(
                             onTap: () {
-                              Get.toNamed("/chatDetailsPage",
+                              Get.toNamed(
+                                "/chatDetailsPage",
                                 arguments: {
                                   'client_id': _bookingDetails?['client']?['client_id'],
                                   'client_name': _bookingDetails?['client']?['name'] ?? 'Unknown',
@@ -660,13 +769,13 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                         children: [
                           GestureDetector(
                             onTap: () {
-                              Get.toNamed('/liveTrackingPage',arguments: {
+                              Get.toNamed('/liveTrackingPage', arguments: {
                                 'booking_id': Get.arguments['booking_id'],
                               });
                             },
                             child: Container(
                               margin: EdgeInsets.symmetric(vertical: 10.h),
-                              height: 150.h,
+                              height: 0.2.sh,
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(16.r),
@@ -716,7 +825,7 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                               size: 18.sp,
                                             ),
                                           ),
-                                          SizedBox(height: 5.h),
+                                          SizedBox(height: 2.h),
                                           FloatingActionButton(
                                             heroTag: "trafficButton",
                                             mini: true,
@@ -728,24 +837,22 @@ class _AppointmentRequestPageState extends State<AppointmentRequestPage> with Si
                                               size: 18.sp,
                                             ),
                                           ),
+                                          SizedBox(height: 2.h),
+                                          FloatingActionButton(
+                                            heroTag: "zoomButton",
+                                            mini: true,
+                                            backgroundColor: Colors.white,
+                                            onPressed: () => _goToLocation(_initialPosition),
+                                            child: Icon(
+                                              Icons.center_focus_strong,
+                                              color: primaryColor,
+                                              size: 18.sp,
+                                            ),
+                                          )
                                         ],
                                       ),
                                     ),
-                                    Positioned(
-                                      right: 10.w,
-                                      bottom: 10.h,
-                                      child: FloatingActionButton(
-                                        heroTag: "zoomButton",
-                                        mini: true,
-                                        backgroundColor: Colors.white,
-                                        onPressed: () => _goToLocation(_initialPosition),
-                                        child: Icon(
-                                          Icons.center_focus_strong,
-                                          color: primaryColor,
-                                          size: 18.sp,
-                                        ),
-                                      ),
-                                    ),
+
                                     Positioned(
                                       top: 10.h,
                                       left: 0,

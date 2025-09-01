@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:thi_massage/themes/colors.dart';
 
 class CustomAppBar extends StatelessWidget {
@@ -26,7 +28,7 @@ class CustomAppBar extends StatelessWidget {
                 child: Icon(Icons.arrow_back_ios, size: 24.sp, color: primaryButtonColor),
               ),
               onPressed: () {
-                Navigator.of(context).pop();
+                Get.back();
               },
             ),
           ),
@@ -40,7 +42,7 @@ class CustomAppBar extends StatelessWidget {
         Center(
           child: Image.asset(
             'assets/images/logo.png',
-            width: 0.4.sw,
+            width: 0.5.sw,
           ),
         ),
 
@@ -54,12 +56,14 @@ class CustomAppBar extends StatelessWidget {
 class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBackButton;
+  final bool showManuButton; // Default to false
   final VoidCallback? onMenuPressed; // Callback for menu button
 
   const SecondaryAppBar({
     super.key,
     required this.title,
     this.showBackButton = true,
+    this.showManuButton = false, // Default to false
     this.onMenuPressed,
   });
 
@@ -78,8 +82,9 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       centerTitle: true, // Keeps title centered
-      leadingWidth: 0.14.sw,
-      leading: Padding(
+      leadingWidth: (showBackButton || showManuButton) ? 0.14.sw : 0,
+      leading: (showBackButton || showManuButton)
+          ? Padding(
         padding: EdgeInsets.only(left: 10.w, top: 5.h, bottom: 5.h),
         child: Container(
           decoration: BoxDecoration(
@@ -102,7 +107,8 @@ class SecondaryAppBar extends StatelessWidget implements PreferredSizeWidget {
             onPressed: onMenuPressed,
           ),
         ),
-      ),
+      )
+          : null,
     );
   }
 

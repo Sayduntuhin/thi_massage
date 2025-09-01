@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import '../../../api/api_service.dart';
+import '../../../controller/auth_controller.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/app_logger.dart';
@@ -25,6 +26,7 @@ class _TermsPrivacyPageState extends State<TermsPrivacyPage>
   bool _isLoadingProfile = true;
   String? _profileErrorMessage;
   final ApiService _apiService = ApiService();
+  final AuthController authController = Get.find<AuthController>();
   final _storage = const FlutterSecureStorage();
   String? _selectedDrawerItem;
 
@@ -181,9 +183,12 @@ class _TermsPrivacyPageState extends State<TermsPrivacyPage>
                   const Spacer(),
                   GestureDetector(
                     onTap: () async {
-                      await _storage.delete(key: 'user_id');
-                      await _storage.delete(key: 'access_token');
-                      Get.offAllNamed('/login');
+                      try {
+                        await  authController.logout();
+
+                      } catch (e) {
+                        AppLogger.error('Failed to logout: $e');
+                      }
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
@@ -262,6 +267,7 @@ class _TermsPrivacyPageState extends State<TermsPrivacyPage>
                             SecondaryAppBar(
                               title: "Terms & Conditions",
                               showBackButton: false,
+                              showManuButton:  true,
                               onMenuPressed: toggleDrawer,
                             ),
                             Expanded(

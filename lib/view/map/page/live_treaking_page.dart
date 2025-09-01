@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../api/api_service.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/app_logger.dart';
 import '../../../controller/user_type_controller.dart';
+import '../../widgets/custom_appbar.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   const LiveTrackingScreen({super.key});
@@ -33,15 +36,50 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   String _personRole = '';
   String? _personImage;
   String _estimatedTime = '';
+  String _distance = ''; // Added distance field
   String _startLocation = '';
   String _endLocation = '';
   bool _isTherapist = false;
   Map<String, dynamic>? _navigationData;
+  Timer? _refreshTimer; // Added timer for periodic updates
 
   @override
   void initState() {
     super.initState();
     _initializeScreen();
+    _startPeriodicUpdates(); // Start periodic updates for live tracking
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel(); // Cancel timer when disposing
+    super.dispose();
+  }
+
+  void _startPeriodicUpdates() {
+    // Refresh every 30 seconds for live tracking
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (!_isLoading && _errorMessage.isEmpty) {
+        _refreshNavigationData();
+      }
+    });
+  }
+
+  Future<void> _refreshNavigationData() async {
+    final arguments = Get.arguments;
+    final bookingId = arguments?['booking_id'] as int?;
+
+    if (bookingId != null) {
+      try {
+        final data = await _apiService.getNavigationData(bookingId, _isTherapist);
+        setState(() {
+          _updateNavigationData(data);
+        });
+        AppLogger.debug('Navigation data refreshed');
+      } catch (e) {
+        AppLogger.error('Failed to refresh navigation data: $e');
+      }
+    }
   }
 
   Future<void> _initializeScreen() async {
@@ -117,6 +155,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
 
     final route = data['route'] as Map<String, dynamic>;
     _estimatedTime = route['estimated_time'] ?? 'Unknown';
+    _distance = route['distance'] ?? 'Unknown'; // Extract distance
     _startLocation = route['start_location'] ?? 'Unknown';
     _endLocation = route['end_location'] ?? 'Unknown';
     _initialPosition = LatLng(
@@ -132,7 +171,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   void _setCustomMarkerIcons() async {
-    _sourceMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+    _sourceMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
     _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
     if (_markers.isNotEmpty) {
       setState(() {
@@ -173,12 +212,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       Polyline(
         polylineId: const PolylineId('route'),
         points: [_initialPosition, _destinationPosition],
-        color: const Color(0xffB48D3C),
-        width: 5,
-        patterns: [
-          PatternItem.dash(20),
-          PatternItem.gap(10),
-        ],
+        color: const Color(0xff4285F4), // Google Maps blue color
+        width: 6,
+        patterns: [],
       ),
     );
 
@@ -247,7 +283,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           southwest: LatLng(minLat, minLng),
           northeast: LatLng(maxLat, maxLng),
         ),
-        50,
+        100,
       ),
     );
   }
@@ -255,6 +291,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: SecondaryAppBar(title:"Track order", showBackButton: true),
       body: Stack(
         children: [
           SizedBox.expand(
@@ -280,88 +317,141 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
               },
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: EdgeInsets.all(16.w),
+
+
+
+          // Distance and time info card (prominent like in the image)
+          if (!_isLoading && _errorMessage.isEmpty)
+            Positioned(
+              top: 100.h,
+              left: 16.w,
               child: Container(
-                width: 30.w,
-                height: 35.h,
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8.r),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r)],
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: IconButton(
-                  onPressed: Get.back,
-                  icon: Icon(Icons.arrow_back_ios, color: primaryColor, size: 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _distance,
+                      style: TextStyle(
+                        fontSize: 24.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    Text(
+                      _estimatedTime,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
+
+          // Map control buttons
           Positioned(
-            right: 10,
-            top: 100,
+            right: 16.w,
+            top: 100.h,
             child: Column(
               children: [
-                FloatingActionButton(
+                _buildMapControlButton(
+                  heroTag: "refreshButton",
+                  icon: Icons.refresh,
+                  onPressed: _refreshNavigationData,
+                ),
+                SizedBox(height: 8.h),
+                _buildMapControlButton(
                   heroTag: "mapTypeButton",
-                  mini: true,
-                  backgroundColor: Colors.white,
+                  icon: _currentMapType == MapType.normal ? Icons.satellite_alt : Icons.map,
                   onPressed: _onMapTypeButtonPressed,
-                  child: Icon(
-                    _currentMapType == MapType.normal ? Icons.satellite_alt : Icons.map,
-                    color: primaryColor,
-                    size: 18,
-                  ),
                 ),
-                SizedBox(height: 5.h),
-                FloatingActionButton(
+                SizedBox(height: 8.h),
+                _buildMapControlButton(
                   heroTag: "trafficButton",
-                  mini: true,
-                  backgroundColor: Colors.white,
+                  icon: Icons.traffic,
                   onPressed: _onTrafficButtonPressed,
-                  child: Icon(
-                    Icons.traffic,
-                    color: _showTraffic ? primaryColor : Colors.grey,
-                    size: 18,
-                  ),
+                  isActive: _showTraffic,
                 ),
-                SizedBox(height: 5.h),
-                FloatingActionButton(
+                SizedBox(height: 8.h),
+                _buildMapControlButton(
                   heroTag: "fitButton",
-                  mini: true,
-                  backgroundColor: Colors.white,
+                  icon: Icons.fit_screen,
                   onPressed: _zoomToFitMarkers,
-                  child: Icon(
-                    Icons.fit_screen,
-                    color: primaryColor,
-                    size: 18,
-                  ),
                 ),
               ],
             ),
           ),
+
+          // Navigate button
           Positioned(
             bottom: 280.h,
             left: 0,
-            right: 0.2.sh,
+            right: 0,
             child: Center(
               child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: Icon(Icons.navigation, color: primaryTextColor),
+                onPressed: () async {
+                  if (_initialPosition == const LatLng(0, 0) || _destinationPosition == const LatLng(0, 0)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid start or destination coordinates')),
+                    );
+                    return;
+                  }
+
+                  final String geoUrl =
+                      'geo:${_initialPosition.latitude},${_initialPosition.longitude}'
+                      '?q=${_destinationPosition.latitude},${_destinationPosition.longitude}';
+                  final Uri url = Uri.parse(geoUrl);
+
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  } else {
+                    final String googleMapsUrl =
+                        'https://www.google.com/maps/dir/?api=1'
+                        '&origin=${_initialPosition.latitude},${_initialPosition.longitude}'
+                        '&destination=${_destinationPosition.latitude},${_destinationPosition.longitude}'
+                        '&travelmode=driving';
+                    final Uri fallbackUrl = Uri.parse(googleMapsUrl);
+
+                    if (await canLaunchUrl(fallbackUrl)) {
+                      await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+                    } else {
+                      AppLogger.error('Could not launch navigation');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not open navigation app')),
+                      );
+                    }
+                  }
+                },
+                icon: Icon(Icons.navigation, color: Colors.white),
                 label: Text(
                   "Navigate",
-                  style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
+                  backgroundColor: const Color(0xff4285F4),
                   elevation: 3,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.r)),
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
                 ),
               ),
             ),
           ),
+
+          // Person info card
           if (!_isLoading && _errorMessage.isEmpty)
             Positioned(
               bottom: 150.h,
@@ -389,10 +479,25 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       CircleAvatar(
-                        backgroundImage: _personImage != null
-                            ? _isTherapist ? NetworkImage('${ApiService.baseUrl}/$_personImage') : NetworkImage('${ApiService.baseUrl}/therapist$_personImage')
-                            : const AssetImage('assets/images/fevTherapist1.png') as ImageProvider,
                         radius: 24.r,
+                        child: ClipOval(
+                          child: _personImage != null
+                              ? CachedNetworkImage(
+                            imageUrl: _isTherapist
+                                ? '${ApiService.baseUrl}/$_personImage'
+                                : '${ApiService.baseUrl}/therapist$_personImage',
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => const CircularProgressIndicator(),
+                            errorWidget: (context, url, error) => Image.asset(
+                              'assets/images/fevTherapist1.png',
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                              : Image.asset(
+                            'assets/images/fevTherapist1.png',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                       SizedBox(width: 10.w),
                       Expanded(
@@ -419,30 +524,22 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-
                           Get.toNamed('/chatDetailsPage', arguments: {
-                            _isTherapist ? "client_id" :'therapist_user_id' : _isTherapist ? _navigationData!['client']['id'] : _navigationData!['therapist']['id'],
+                            _isTherapist ? "client_id" : 'therapist_user_id' : _isTherapist ? _navigationData!['client']['id'] : _navigationData!['therapist']['id'],
                             _isTherapist ? "client_name" : 'name': _personName,
-                            _isTherapist ? 'client_image' : 'image' : _isTherapist ? '${ApiService.baseUrl}/${_personImage}' :  NetworkImage('${ApiService.baseUrl}/therapist$_personImage'),
-                          }
-
-                          );
-
+                            _isTherapist ? 'client_image' : 'image' : _isTherapist ? '${ApiService.baseUrl}/$_personImage' : '${ApiService.baseUrl}/therapist$_personImage',
+                          });
                         },
                         child: SvgPicture.asset("assets/svg/chat_white.svg"),
                       ),
                       SizedBox(width: 12.w),
-                      GestureDetector(
-                        onTap: () {
-                          // Implement phone call using phone number
-                        },
-                        child: SvgPicture.asset("assets/svg/phone.svg"),
-                      ),
                     ],
                   ),
                 ),
               ),
             ),
+
+          // Route details bottom panel
           if (!_isLoading && _errorMessage.isEmpty)
             Positioned(
               bottom: 0,
@@ -464,10 +561,10 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                           width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: primaryColor,
+                            color: Colors.green,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.access_time, color: Colors.white, size: 16),
+                          child: Icon(Icons.my_location, color: Colors.white, size: 16),
                         ),
                         Container(
                           width: 2,
@@ -478,7 +575,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: primaryColor,
+                            color: Colors.red,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
@@ -488,7 +585,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                           height: 25.h,
                           color: Colors.grey.withOpacity(0.5),
                         ),
-                        Icon(Icons.location_on, color: Colors.black, size: 18),
+                        Icon(Icons.location_on, color: Colors.red, size: 18),
                       ],
                     ),
                     SizedBox(width: 16.w),
@@ -496,23 +593,37 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Estimated time",
-                            style: TextStyle(fontSize: 13.sp, color: Colors.grey),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "Distance: $_distance",
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                "ETA: $_estimatedTime",
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            _estimatedTime,
-                            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-                          ),
-                          SizedBox(height: 14.h),
+                          SizedBox(height: 12.h),
                           Text(
                             _startLocation.isNotEmpty ? _startLocation.split(',')[0] : 'Unknown',
-                            style: TextStyle(fontSize: 14.sp),
+                            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
                           ),
                           SizedBox(height: 20.h),
                           Text(
                             _endLocation.isNotEmpty ? _endLocation.split(',')[0] : 'Unknown',
-                            style: TextStyle(fontSize: 14.sp),
+                            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),
@@ -526,37 +637,34 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     );
   }
 
-  Widget _mapPin(String label) {
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12.r),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+  Widget _buildMapControlButton({
+    required String heroTag,
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool isActive = false,
+  }) {
+    return Container(
+      width: 40.w,
+      height: 40.h,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: Offset(0, 2),
           ),
-          child: Text(label, style: TextStyle(fontSize: 12.sp)),
+        ],
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(
+          icon,
+          color: isActive ? primaryColor : Colors.grey[700],
+          size: 18,
         ),
-        Icon(Icons.location_pin, color: const Color(0xffB48D3C), size: 28.sp),
-      ],
-    );
-  }
-
-  Widget _destinationPin(String label) {
-    return Column(
-      children: [
-        Icon(Icons.location_on, color: const Color(0xffB48D3C), size: 30.sp),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12.r),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
-          ),
-          child: Text(label, style: TextStyle(fontSize: 12.sp)),
-        ),
-      ],
+      ),
     );
   }
 }

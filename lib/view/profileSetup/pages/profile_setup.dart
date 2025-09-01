@@ -238,17 +238,29 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
 
       final phoneNumber = phoneController.text.trim();
       final fullName = nameController.text.trim();
-      final response = await apiService.setupClientProfile(
-        userId!,
-        profileId: profileId!,
-        image: _image,
-        fullName: fullName.isNotEmpty ? fullName : null,
-        phone: phoneNumber.isNotEmpty ? phoneNumber : null,
-        dateOfBirth: dobController.text.trim(),
-        isTherapist: isTherapist,
-      );
 
-      AppLogger.info("Profile updated: ${response.toString()}");
+      if (isTherapist) {
+        final response = await apiService.setupTherapistProfile(
+          userId!,
+          profileId: profileId,
+          image: _image,
+          fullName: fullName.isNotEmpty ? fullName : null,
+          phone: phoneNumber.isNotEmpty ? phoneNumber : null,
+          dateOfBirth: dobController.text.trim(),
+        );
+        AppLogger.info("Therapist profile updated: ${response.toString()}");
+      } else {
+        final response = await apiService.setupClientProfile(
+          userId!,
+          profileId: profileId!,
+          image: _image,
+          fullName: fullName.isNotEmpty ? fullName : null,
+          phone: phoneNumber.isNotEmpty ? phoneNumber : null,
+          dateOfBirth: dobController.text.trim(),
+          isTherapist: isTherapist,
+        );
+        AppLogger.info("Client profile updated: ${response.toString()}");
+      }
 
       LoadingManager.hideLoading();
 
@@ -273,7 +285,10 @@ class ProfileSetupPageState extends State<ProfileSetupPage> {
       } else {
         AppLogger.debug("Navigating to ${isTherapist ? '/verifyDocumentsPage' : '/homePage'}");
         if (isTherapist) {
-          Get.toNamed("/verifyDocumentsPage");
+          Get.toNamed("/verifyDocumentsPage", arguments: {
+            "user_id": userId,
+            "profile_id": profileId,
+          });
         } else {
           Get.toNamed("/homePage");
         }

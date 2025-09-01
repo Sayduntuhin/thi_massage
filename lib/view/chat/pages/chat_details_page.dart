@@ -1,14 +1,16 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:thi_massage/themes/colors.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../controller/Chat_socket_controller.dart';
+import '../../../controller/location_controller.dart';
 import '../../../models/chat_model.dart';
 import '../../widgets/app_logger.dart';
-import '../../widgets/loading_indicator.dart';
+import '../../widgets/custom_snackbar.dart';
+import 'package:toastification/toastification.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   const ChatDetailScreen({super.key});
@@ -32,6 +34,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _isTyping = false;
   String? _selectedMessageId;
   late final ChatWebSocketController _controller;
+  final LocationController _locationController = Get.find<LocationController>();
+  final RxBool _isSharingLocation = false.obs; // Track location sharing state
 
   @override
   void initState() {
@@ -43,7 +47,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     clientName = arguments?['client_name']?.toString() ?? 'Unknown User';
     clientImage = arguments?['client_image']?.toString() ?? 'assets/images/therapist.png';
 
-    therapistId = arguments?['therapist_user_id'] as int? ?? 1;
+    therapistId = arguments?['therapist_user_id'] != null
+        ? int.tryParse(arguments!['therapist_user_id'].toString()) ?? 0
+        : 0;
     therapistName = arguments?['name']?.toString() ?? 'Therapist';
     therapistImage = arguments?['image']?.toString() ?? 'assets/images/therapist.png';
 
@@ -68,6 +74,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       displayName = 'Unknown User';
       displayImage = 'assets/images/therapist.png';
       AppLogger.debug('Using default details for display');
+    }
+
+    if (therapistId == null || therapistId == 0) {
+      CustomSnackBar.show(
+        context,
+        'Invalid therapist ID. Cannot start chat.',
+        type: ToastificationType.error,
+      );
+      Get.back();
+      return;
     }
 
     AppLogger.debug(
@@ -136,6 +152,108 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     setState(() {
       _selectedMessageId = null;
     });
+  }
+
+  Future<void> _sendLocationMessage() async {
+    if (_controller.isConnecting.value || _isSharingLocation.value) return;
+
+    _isSharingLocation.value = true;
+    try {
+      // Use cached location if valid, otherwise fetch new location
+      if (!_locationController.hasValidLocation) {
+        await _locationController.fetchCurrentLocation();
+      }
+
+      if (_locationController.hasError.value) {
+        AppLogger.error('Location fetch failed: ${_locationController.locationName.value}');
+        if (mounted) {
+          CustomSnackBar.show(
+            context,
+            _locationController.locationName.value,
+            type: ToastificationType.error,
+          );
+        }
+        return;
+      }
+
+      final position = _locationController.position.value;
+      if (position == null) {
+        AppLogger.error('No position available');
+        if (mounted) {
+          CustomSnackBar.show(
+            context,
+            'Failed to get current location',
+            type: ToastificationType.error,
+          );
+        }
+        return;
+      }
+
+      final coords = '${position.latitude},${position.longitude}';
+      final address = _locationController.locationName.value;
+      final locationMessage = 'Location: $address\nhttps://maps.google.com/?q=$coords';
+
+      // Show confirmation dialog
+      if (mounted) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Share Location'),
+            content: Text('Do you want to share your live location?\n\n$address'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Share'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed != true) {
+          AppLogger.debug('Location sharing cancelled by user');
+          return;
+        }
+
+        _controller.sendMessage(locationMessage);
+        AppLogger.debug('Sent location message: $locationMessage');
+        CustomSnackBar.show(
+          context,
+          'Location shared',
+          type: ToastificationType.success,
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Error sending location: $e');
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Failed to share location: $e',
+          type: ToastificationType.error,
+        );
+      }
+    } finally {
+      _isSharingLocation.value = false;
+    }
+  }
+
+  Future<void> _launchLocationUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      AppLogger.error('Could not launch URL: $url');
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          'Failed to open map',
+          type: ToastificationType.error,
+        );
+      }
+    }
   }
 
   @override
@@ -232,7 +350,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Widget _buildMessageList() {
-    AppLogger.debug('Building message list with ${ _controller.messages.length} messages');
+    AppLogger.debug('Building message list with ${_controller.messages.length} messages');
     final Map<String, List<ChatMessage>> groupedMessages = {};
 
     final messages = _controller.messages..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -277,21 +395,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               final isLastFromSender = index == messagesForDate.length - 1 ||
                   messagesForDate[index + 1].isMe != message.isMe;
 
-              if (message.isVoice) {
-                return _voiceBubble(
-                  message,
-                  isLastFromSender: isLastFromSender,
-                );
-              } else {
-                return _chatBubble(
-                  message.text,
-                  isMe: message.isMe,
-                  showAvatar: isLastFromSender,
-                  timestamp: message.timestamp,
-                  messageId: message.id,
-                  status: message.status,
-                );
-              }
+              return _chatBubble(
+                message.text,
+                isMe: message.isMe,
+                showAvatar: isLastFromSender,
+                timestamp: message.timestamp,
+                messageId: message.id,
+                status: message.status,
+              );
             }).toList(),
           ],
         );
@@ -308,64 +419,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         required MessageStatus status,
       }) {
     final isTimestampVisible = _selectedMessageId == messageId;
-    if (isMe) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: () => _toggleTimestamp(messageId),
-                  child: Container(
-                    margin: EdgeInsets.only(top: 8.h),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 14.w,
-                      vertical: 10.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffF3EEDF),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16.r),
-                        topRight: Radius.circular(16.r),
-                        bottomLeft: Radius.circular(16.r),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          text,
-                          style: TextStyle(fontSize: 14.sp),
-                        ),
-                        SizedBox(width: 8.w),
-                        _buildStatusIndicator(status),
-                      ],
-                    ),
-                  ),
-                ),
-                if (isTimestampVisible) ...[
-                  SizedBox(height: 4.h),
-                  Text(
-                    _getFormattedTime(timestamp),
-                    style: TextStyle(fontSize: 10.sp, color: Colors.grey),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      );
-    } else {
-      return Padding(
+    final isLocationMessage = text.startsWith('Location:');
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Padding(
         padding: EdgeInsets.only(top: 8.h),
         child: Row(
+          mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: showAvatar ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            if (showAvatar)
+            if (!isMe && showAvatar)
               Stack(
                 children: [
                   CircleAvatar(
@@ -405,180 +469,85 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ],
               )
-            else
+            else if (!isMe)
               SizedBox(width: 36.w),
-            SizedBox(width: 8.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: () => _toggleTimestamp(messageId),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 14.w,
-                      vertical: 10.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Color(0xffE4E4E4),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(16.r),
-                        topLeft: Radius.circular(16.r),
-                        bottomRight: Radius.circular(16.r),
+            if (!isMe) SizedBox(width: 8.w),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: isLocationMessage
+                        ? () {
+                      final url = text.split('\n').lastWhere((line) => line.startsWith('https://maps.google.com'), orElse: () => '');
+                      if (url.isNotEmpty) {
+                        _launchLocationUrl(url);
+                      }
+                    }
+                        : () => _toggleTimestamp(messageId),
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: 0.7.sw, // Limit bubble width to 70% of screen width
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 10.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isMe ? const Color(0xffF3EEDF) : Color(0xffE4E4E4),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(16.r),
+                          topRight: Radius.circular(16.r),
+                          bottomLeft: Radius.circular(isMe ? 16.r : 0),
+                          bottomRight: Radius.circular(isMe ? 0 : 16.r),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (isLocationMessage)
+                            Padding(
+                              padding: EdgeInsets.only(right: 8.w),
+                              child: Icon(
+                                Icons.location_on,
+                                color: isMe ? Colors.blue : Colors.grey[600],
+                                size: 18.sp,
+                              ),
+                            ),
+                          Flexible(
+                            child: Text(
+                              text,
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: isLocationMessage ? (isMe ? Colors.blue : Colors.grey[800]) : Colors.black,
+                                decoration: isLocationMessage ? TextDecoration.underline : TextDecoration.none,
+                              ),
+                              softWrap: true,
+                              overflow: TextOverflow.clip, // Ensure text wraps within constraints
+                            ),
+                          ),
+                          if (isMe) ...[
+                            SizedBox(width: 8.w),
+                            _buildStatusIndicator(status),
+                          ],
+                        ],
                       ),
                     ),
-                    child: Text(
-                      text,
-                      style: TextStyle(fontSize: 14.sp),
+                  ),
+                  if (isTimestampVisible) ...[
+                    SizedBox(height: 4.h),
+                    Text(
+                      _getFormattedTime(timestamp),
+                      style: TextStyle(fontSize: 10.sp, color: Colors.grey),
                     ),
-                  ),
-                ),
-                if (isTimestampVisible) ...[
-                  SizedBox(height: 4.h),
-                  Text(
-                    _getFormattedTime(timestamp),
-                    style: TextStyle(fontSize: 10.sp, color: Colors.grey),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
+            if (isMe) SizedBox(width: 8.w),
           ],
         ),
-      );
-    }
-  }
-
-  Widget _voiceBubble(
-      ChatMessage message, {
-        bool isLastFromSender = false,
-      }) {
-    final isMe = message.isMe;
-    final isTimestampVisible = _selectedMessageId == message.id;
-
-    return Padding(
-      padding: EdgeInsets.only(top: 8.h),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isMe)
-            isLastFromSender
-                ? Stack(
-              children: [
-                CircleAvatar(
-                  radius: 18.r,
-                  child: ClipOval(
-                    child: displayImage.startsWith('http')
-                        ? CachedNetworkImage(
-                      imageUrl: displayImage,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const CircularProgressIndicator(),
-                      errorWidget: (context, url, error) => Image.asset(
-                        'assets/images/therapist.png',
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                        : Image.asset(
-                      displayImage,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 8.w,
-                    height: 8.w,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 1.2,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            )
-                : SizedBox(width: 36.w),
-          if (!isMe) SizedBox(width: 8.w),
-          Column(
-            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: () => _toggleTimestamp(message.id),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
-                    vertical: 8.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isMe ? const Color(0xffF3EEDF) : Color(0xffE4E4E4),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(40.r),
-                      topRight: Radius.circular(40.r),
-                      bottomLeft: Radius.circular(isMe ? 40.r : 0),
-                      bottomRight: Radius.circular(isMe ? 0 : 40.r),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isMe)
-                        Image.asset(
-                          'assets/images/voice_wave_yellow.png',
-                          width: 0.45.sw,
-                          height: 20.h,
-                          fit: BoxFit.fitWidth,
-                        )
-                      else
-                        Row(
-                          children: [
-                            SvgPicture.asset("assets/svg/play_button.svg"),
-                            SizedBox(width: 6.w),
-                            Image.asset(
-                              'assets/images/voice_wave_grey.png',
-                              width: 0.38.sw,
-                              height: 20.h,
-                              fit: BoxFit.fitWidth,
-                            ),
-                          ],
-                        ),
-                      if (isMe) ...[
-                        SizedBox(width: 10.w),
-                        Container(
-                          width: 40.w,
-                          height: 40.w,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.play_arrow,
-                            color: primaryColor,
-                            size: 20,
-                          ),
-                        ),
-                      ],
-                      if (isMe) ...[
-                        SizedBox(width: 8.w),
-                        _buildStatusIndicator(message.status),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              if (isTimestampVisible) ...[
-                SizedBox(height: 4.h),
-                Text(
-                  _getFormattedTime(message.timestamp),
-                  style: TextStyle(fontSize: 10.sp, color: Colors.grey),
-                ),
-              ],
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -652,9 +621,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     ),
                     Row(
                       children: [
-                        Icon(Icons.image_outlined, color: Colors.grey, size: 20.sp),
-                        SizedBox(width: 8.w),
-                        Icon(Icons.location_on_outlined, color: Colors.grey, size: 20.sp),
+                        /*  Icon(Icons.image_outlined, color: Colors.grey, size: 20.sp),
+                        SizedBox(width: 8.w),*/
+                        Obx(() => GestureDetector(
+                          onTap: _sendLocationMessage,
+                          child: _isSharingLocation.value
+                              ? SizedBox(
+                            width: 20.sp,
+                            height: 20.sp,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                            ),
+                          )
+                              : Icon(
+                            Icons.location_on_outlined,
+                            color: Colors.grey,
+                            size: 20.sp,
+                          ),
+                        )),
                       ],
                     ),
                   ],
@@ -663,16 +648,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             SizedBox(width: 8.w),
             Obx(() => GestureDetector(
-              onTap: () async {
+              onTap: () {
                 if (_controller.isConnecting.value) return;
-                if (_isTyping) {
-                  final text = _messageController.text.trim();
-                  if (text.isNotEmpty) {
-                    _controller.sendMessage(text);
-                    _messageController.clear();
-                  }
-                } else {
-                  _controller.sendMessage('Voice message (0:05)', isVoice: true);
+                final text = _messageController.text.trim();
+                if (text.isNotEmpty) {
+                  _controller.sendMessage(text);
+                  _messageController.clear();
                 }
               },
               child: Container(
@@ -683,7 +664,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  _isTyping ? Icons.send : Icons.mic,
+                  Icons.send,
                   color: Colors.white,
                   size: 20.sp,
                 ),

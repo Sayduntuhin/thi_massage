@@ -19,12 +19,21 @@ class FavoriteTherapistPage extends StatefulWidget {
 
 class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
   List<Map<String, dynamic>> therapists = [];
+  List<Map<String, dynamic>> filteredTherapists = [];
   bool isLoading = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     fetchFavoriteTherapists();
+    _searchController.addListener(_filterTherapists);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchFavoriteTherapists() async {
@@ -39,13 +48,11 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
 
       setState(() {
         therapists = response.map((therapist) {
-          // Minimal validation
           if (therapist['id'] == null || therapist['therapist_full_name'] == null) {
             AppLogger.error("Invalid therapist data: $therapist");
             return null;
           }
 
-          // Construct image URL
           String imagePath = therapist['therapist_image']?.toString() ?? '/media/documents/default_profile.jpg';
           String imageUrl;
           if (imagePath.startsWith('/media/')) {
@@ -56,7 +63,6 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
             imageUrl = '${ApiService.baseUrl}/api/media/documents/default_profile.jpg';
           }
 
-          // Map gender
           final gender = therapist['therapist_gender']?.toString().toLowerCase() ?? 'male';
           final svgPath = gender == 'female' ? 'assets/svg/female.svg' : 'assets/svg/male.svg';
           final genderColor = gender == 'female' ? Colors.pink : Colors.blue;
@@ -74,6 +80,7 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
           };
         }).where((therapist) => therapist != null).cast<Map<String, dynamic>>().toList();
 
+        filteredTherapists = List.from(therapists);
         AppLogger.debug("Mapped therapists (count: ${therapists.length}): $therapists");
       });
     } catch (e) {
@@ -95,6 +102,22 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
     }
   }
 
+  void _filterTherapists() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        filteredTherapists = List.from(therapists);
+      } else {
+        filteredTherapists = therapists.where((therapist) {
+          final name = therapist['name']?.toString().toLowerCase() ?? '';
+          final specialty = therapist['specialty']?.toString().toLowerCase() ?? '';
+          return name.contains(query) || specialty.contains(query);
+        }).toList();
+      }
+      AppLogger.debug("Filtered therapists (count: ${filteredTherapists.length}): $filteredTherapists");
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -107,9 +130,10 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
             SizedBox(height: 0.05.sh),
             // Search Bar
             TextField(
+              controller: _searchController,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search, color: Color(0xff606060)),
-                hintText: "Search",
+                hintText: "Search by name or specialty",
                 hintStyle: TextStyle(fontSize: 14.sp, color: Colors.black54),
                 filled: true,
                 fillColor: textFieldColor,
@@ -133,13 +157,13 @@ class _FavoriteTherapistPageState extends State<FavoriteTherapistPage> {
             Expanded(
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : therapists.isEmpty
-                  ? const Center(child: Text("No favorite therapists found"))
+                  : filteredTherapists.isEmpty
+                  ? const Center(child: Text("No matching therapists found"))
                   : ListView.builder(
                 key: const ValueKey('therapist_list'),
-                itemCount: therapists.length,
+                itemCount: filteredTherapists.length,
                 itemBuilder: (context, index) {
-                  final therapist = therapists[index];
+                  final therapist = filteredTherapists[index];
                   AppLogger.debug(
                       "Rendering therapist ID: ${therapist['id']}, Name: ${therapist['name']}, Image: ${therapist['image']}");
                   return _buildTherapistItem(

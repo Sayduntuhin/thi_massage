@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:get/get.dart';
+import 'package:get/Get.dart';
 import 'package:toastification/toastification.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import '../../../../api/api_service.dart';
@@ -88,46 +87,54 @@ class _SignUpPageState extends State<SignUpPage> {
         role: isTherapist ? "therapist" : "client",
       );
 
-      final role = response['profile_data']?['role'] ?? 'client';
-      final isTherapistFromResponse = role == 'therapist';
-      final userId = response['profile_data']?['user'];
-      final profileId = response['profile_data']?['id'];
-      if (userId == null || profileId == null) {
-        AppLogger.error("Missing user or id in signUp response: $response");
-        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
+      AppLogger.debug("Sign-up response: $response");
+
+      // Check if widget is still mounted before proceeding
+      if (!mounted) {
+        LoadingManager.hideLoading();
         return;
       }
 
-      userTypeController.setUserType(isTherapistFromResponse);
-      authController.isLoggedIn.value = true;
-      authController.userId.value = userId.toString();
+      // Check if OTP was sent (flexible condition)
+      if (response.containsKey('message') && response['message'].toString().toLowerCase().contains("otp sent")) {
+        LoadingManager.hideLoading(); // Hide loading BEFORE showing success message and navigation
 
-      LoadingManager.hideLoading();
+        if (mounted) {
+          CustomSnackBar.show(context, "Sign-up successful! Please verify your email.", type: ToastificationType.success);
+        }
 
-      CustomSnackBar.show(context, "Sign-up successful! Please verify your email.", type: ToastificationType.success);
+        await Future.delayed(const Duration(milliseconds: 500)); // Brief delay to ensure snackbar is visible
 
-      Get.offAllNamed(
-        '/otpVerification',
-        arguments: {
-          "source": "signup",
-          "email": emailController.text.trim(),
-          "full_name": nameController.text.trim(),
-          "phone_number": phoneController.text.trim(),
-          "country_code": phoneFieldController.getCountryCode(),
-          "isTherapist": isTherapistFromResponse,
-          "user_id": userId,
-          "profile_id": profileId,
-        },
-      );
+        // Navigate without checking mounted since Get.toNamed doesn't require context
+        Get.toNamed(
+          '/otpVerification',
+          arguments: {
+            "source": "signup",
+            "email": emailController.text.trim(),
+            "full_name": nameController.text.trim(),
+            "phone_number": phoneController.text.trim(),
+            "country_code": phoneFieldController.getCountryCode(),
+            "isTherapist": isTherapist,
+          },
+        );
+      } else {
+        throw Exception("Unexpected response from sign-up API: $response");
+      }
     } catch (e) {
-      LoadingManager.hideLoading();
+      LoadingManager.hideLoading(); // Hide loading immediately when error occurs
+
+      // Check if widget is still mounted before showing snackbar
+      if (!mounted) return;
+
       String errorMessage = "Failed to sign up. Please try again.";
       if (e is PendingApprovalException) {
         errorMessage = e.message;
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.warning);
       } else if (e is BadRequestException) {
         errorMessage = e.message;
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         if (e.message.contains('already registered')) {
+          await Future.delayed(const Duration(milliseconds: 1500)); // Delay to show snackbar
           Get.offAllNamed(
             '/logIn',
             arguments: {
@@ -138,12 +145,14 @@ class _SignUpPageState extends State<SignUpPage> {
         }
       } else if (e is ServerException) {
         errorMessage = "Server error. Please try again later.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else {
         AppLogger.error("Sign-up error: $e");
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       }
-      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
 
@@ -176,38 +185,11 @@ class _SignUpPageState extends State<SignUpPage> {
       final userEmail = response['profile_data']?['email'] ?? firebaseEmail ?? '';
 
       if (userId == null || profileId == null) {
-        AppLogger.error("Missing user or id in socialSignUpSignIn response: $response");
-        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
-        LoadingManager.hideLoading();
-        return;
+        AppLogger.error("Missing user or id in socialSignUpSignIn response");
+        throw Exception("Invalid response from Google Sign-In");
       }
-
-      final attemptedRole = isTherapist ? 'therapist' : 'client';
-      if (role != attemptedRole) {
-        LoadingManager.hideLoading();
-        CustomSnackBar.show(
-          context,
-          "This email is already registered as a ${role == 'therapist' ? 'therapist' : 'client'}. Please log in.",
-          type: ToastificationType.error,
-        );
-        Get.offAllNamed(
-          '/logIn',
-          arguments: {
-            'isTherapist': isTherapist,
-            'email': userEmail,
-          },
-        );
-        return;
-      }
-
-      userTypeController.setUserType(isTherapistFromResponse);
-      authController.isLoggedIn.value = true;
-      authController.userId.value = userId.toString();
 
       LoadingManager.hideLoading();
-
-      CustomSnackBar.show(context, "Google Sign-In successful!", type: ToastificationType.success);
-
       Get.toNamed(
         '/profileSetup',
         arguments: {
@@ -226,19 +208,11 @@ class _SignUpPageState extends State<SignUpPage> {
       if (e is PendingApprovalException) {
         errorMessage = e.message;
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.warning);
-      } else if (e is PlatformException) {
-        AppLogger.error("Google Sign-In PlatformException: Code=${e.code}, Message=${e.message}, Details=${e.details}");
-        if (e.code == 'sign_in_failed') {
-          errorMessage = "Google Sign-In failed. Please check your Google account or app configuration.";
-          if (e.message?.contains('ApiException: 10') == true) {
-            errorMessage = "Configuration error: Verify OAuth client ID, SHA-1, and package name in Firebase Console.";
-          }
-        } else if (e.code == 'network_error') {
-          errorMessage = "Network error. Please check your internet connection.";
-        }
       } else if (e is BadRequestException) {
         errorMessage = e.message;
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         if (e.message.contains('already registered')) {
+          await Future.delayed(const Duration(milliseconds: 1500)); // Delay to show snackbar
           Get.offAllNamed(
             '/logIn',
             arguments: {
@@ -249,12 +223,14 @@ class _SignUpPageState extends State<SignUpPage> {
         }
       } else if (e is ServerException) {
         errorMessage = "Server error. Please try again later.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else {
-        AppLogger.error("Google Sign-In Unexpected Error: $e");
+        AppLogger.error("Google Sign-In Error: $e");
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       }
-      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
 
@@ -265,10 +241,10 @@ class _SignUpPageState extends State<SignUpPage> {
     LoadingManager.showLoading();
 
     try {
-      final facebookLoginResult = await FacebookAuth.instance.login();
-      if (facebookLoginResult.status != LoginStatus.success) throw Exception('Facebook Sign-In cancelled');
-      final facebookUser = await FacebookAuth.instance.getUserData();
-      firebaseEmail = facebookUser['email'];
+      final LoginResult result = await FacebookAuth.instance.login();
+      if (result.status == LoginStatus.cancelled) throw Exception('Facebook Sign-In cancelled');
+      final userData = await FacebookAuth.instance.getUserData();
+      firebaseEmail = userData['email'];
       AppLogger.debug('Firebase email: $firebaseEmail');
 
       final authService = Get.find<AuthService>();
@@ -280,46 +256,19 @@ class _SignUpPageState extends State<SignUpPage> {
       AppLogger.debug('Backend response: $response');
       AppLogger.debug('Role from response: ${response['profile_data']?['role']}');
 
-      final role = response['profile_data']?['role'] ?? 'client';
+      final role = response['profile_data']?['role'] ?? (isTherapist ? 'therapist' : 'client');
       final isTherapistFromResponse = role == 'therapist';
       final userId = response['profile_data']?['user'];
       final profileId = response['profile_data']?['id'];
       final userEmail = response['profile_data']?['email'] ?? firebaseEmail ?? '';
 
       if (userId == null || profileId == null) {
-        AppLogger.error("Missing user or id in socialSignUpSignIn response: $response");
-        CustomSnackBar.show(context, "Failed to retrieve user profile data", type: ToastificationType.error);
-        LoadingManager.hideLoading();
-        return;
+        AppLogger.error("Missing user or id in socialSignUpSignIn response");
+        throw Exception("Invalid response from Facebook Sign-In");
       }
-
-      final attemptedRole = isTherapist ? 'therapist' : 'client';
-      if (role != attemptedRole) {
-        LoadingManager.hideLoading();
-        CustomSnackBar.show(
-          context,
-          "This email is already registered as a ${role == 'therapist' ? 'therapist' : 'client'}. Please log in.",
-          type: ToastificationType.error,
-        );
-        Get.offAllNamed(
-          '/logIn',
-          arguments: {
-            'isTherapist': isTherapist,
-            'email': userEmail,
-          },
-        );
-        return;
-      }
-
-      userTypeController.setUserType(isTherapistFromResponse);
-      authController.isLoggedIn.value = true;
-      authController.userId.value = userId.toString();
 
       LoadingManager.hideLoading();
-
-      CustomSnackBar.show(context, "Facebook Sign-In successful!", type: ToastificationType.success);
-
-      Get.offAllNamed(
+      Get.toNamed(
         '/profileSetup',
         arguments: {
           'isTherapist': isTherapistFromResponse,
@@ -339,7 +288,9 @@ class _SignUpPageState extends State<SignUpPage> {
         CustomSnackBar.show(context, errorMessage, type: ToastificationType.warning);
       } else if (e is BadRequestException) {
         errorMessage = e.message;
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
         if (e.message.contains('already registered')) {
+          await Future.delayed(const Duration(milliseconds: 1500)); // Delay to show snackbar
           Get.offAllNamed(
             '/logIn',
             arguments: {
@@ -350,12 +301,14 @@ class _SignUpPageState extends State<SignUpPage> {
         }
       } else if (e is ServerException) {
         errorMessage = "Server error. Please try again later.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else if (e is NetworkException) {
         errorMessage = "No internet connection.";
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       } else {
         AppLogger.error("Facebook Sign-In Error: $e");
+        CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
       }
-      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
 
@@ -371,7 +324,7 @@ class _SignUpPageState extends State<SignUpPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(height: 0.05.sh),
-              const CustomAppBar(),
+              const CustomAppBar(showBackButton: false),
               SizedBox(height: 0.04.sh),
               Text(
                 "Sign up as ${isTherapist ? 'Therapist' : 'Client'}",

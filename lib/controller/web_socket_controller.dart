@@ -4,7 +4,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../view/widgets/app_logger.dart';
 
 class WebSocketController extends GetxController {
-  final _webSocketUrl = 'ws://192.168.10.139:3333/ws/location/';
+  final _webSocketUrl = 'wss://backend.thaimassagesnearmeapp.com/ws/location/';
   WebSocketChannel? _webSocketChannel;
   final nearbyTherapists = <Map<String, dynamic>>[].obs;
   final isTherapistsLoading = true.obs;

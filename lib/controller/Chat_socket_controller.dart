@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../../models/chat_model.dart';
-import '../../api/api_service.dart';
-import '../view/widgets/app_logger.dart';
-import '../view/widgets/loading_indicator.dart';
-import '../view/widgets/custom_snackbar.dart';
+import 'package:thi_massage/api/api_service.dart';
+import 'package:thi_massage/models/chat_model.dart';
+import 'package:thi_massage/view/widgets/app_logger.dart';
+import 'package:thi_massage/view/widgets/loading_indicator.dart';
+import 'package:thi_massage/view/widgets/custom_snackbar.dart';
+import 'package:thi_massage/controller/chat_list_controller.dart';
 import 'package:toastification/toastification.dart';
 
 class ChatWebSocketController extends GetxController {
@@ -113,7 +115,7 @@ class ChatWebSocketController extends GetxController {
 
     try {
       _channel = WebSocketChannel.connect(
-        Uri.parse('ws://192.168.10.139:3333/ws/chat/$_chatRoomId/'),
+        Uri.parse('ws://backend.thaimassagesnearmeapp.com/ws/chat/$_chatRoomId/'),
       );
 
       _channel!.stream.listen(
@@ -154,14 +156,16 @@ class ChatWebSocketController extends GetxController {
               );
             } else {
               AppLogger.debug('Adding new message: $messageText');
-              messages.add(ChatMessage(
+              final newMessage = ChatMessage(
                 id: serverMessageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
                 text: messageText,
                 isMe: isMe,
                 isVoice: messageText.contains('Voice message'),
                 timestamp: timestamp,
                 status: MessageStatus.sent,
-              ));
+              );
+              messages.add(newMessage);
+              _updateChatList(newMessage); // Update chat list for received messages
             }
           }
           _reconnectAttempts = 0;
@@ -244,17 +248,18 @@ class ChatWebSocketController extends GetxController {
     };
 
     try {
-      messages.add(ChatMessage(
+      final newMessage = ChatMessage(
         id: messageId,
         text: isVoice ? 'Voice message (0:05)' : text,
         isMe: true,
         isVoice: isVoice,
         timestamp: DateTime.now(),
         status: MessageStatus.sending,
-      ));
-
+      );
+      messages.add(newMessage);
       _channel!.sink.add(jsonEncode(messagePayload));
       AppLogger.debug('Sent message: $messagePayload');
+      _updateChatList(newMessage); // Update chat list for sent messages
     } catch (e) {
       AppLogger.error('Error sending message: $e');
       final failedMessageIndex = messages.indexWhere((m) => m.id == messageId);
@@ -270,6 +275,35 @@ class ChatWebSocketController extends GetxController {
           type: ToastificationType.error,
         );
       }
+    }
+  }
+
+  void _updateChatList(ChatMessage message) {
+    final ChatListController chatListController = Get.find<ChatListController>();
+    final chatRoomId = _chatRoomId;
+
+    if (chatRoomId == null) {
+      AppLogger.error('Chat room ID is null in arguments');
+      return;
+    }
+
+    final chatIndex = chatListController.chatList.indexWhere(
+          (chat) => chat['chat_room_id'] == chatRoomId,
+    );
+
+    if (chatIndex != -1) {
+      chatListController.chatList[chatIndex] = {
+        ...chatListController.chatList[chatIndex],
+        'latest_message': message.text,
+        'latest_timestamp': DateFormat('dd MMM').format(message.timestamp),
+        'unread_count': message.isMe ? 0 : (chatListController.chatList[chatIndex]['unread_count'] ?? 0) + 1,
+      };
+      chatListController.filterChatList();
+      AppLogger.debug('Updated chat list with new message: ${message.text}');
+    } else {
+      AppLogger.debug('Chat room $chatRoomId not found in chatList');
+      // Fetch chat list to sync with server if chat room is missing
+      chatListController.fetchChatList();
     }
   }
 

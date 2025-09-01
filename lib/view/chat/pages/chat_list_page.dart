@@ -1,74 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
-import '../../../api/api_service.dart';
-import '../../../controller/user_type_controller.dart';
-import '../../../themes/colors.dart';
-import '../../../routers/app_router.dart';
-import 'package:toastification/toastification.dart';
+import 'package:thi_massage/controller/chat_list_controller.dart';
+import 'package:thi_massage/themes/colors.dart';
 
-import '../../widgets/app_logger.dart';
-import '../../widgets/custom_snackBar.dart';
-
-class ChatListScreen extends StatefulWidget {
+class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
 
   @override
-  State<ChatListScreen> createState() => _ChatListScreenState();
-}
-
-class _ChatListScreenState extends State<ChatListScreen> {
-  final UserTypeController userTypeController = Get.find<UserTypeController>();
-  final RxList<Map<String, dynamic>> _chatList = <Map<String, dynamic>>[].obs;
-  final RxBool isLoading = true.obs;
-  final ApiService _apiService = ApiService();
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchChatList();
-  }
-
-  Future<void> _fetchChatList() async {
-    isLoading.value = true;
-    try {
-      final chatList = await _apiService.fetchChatInbox();
-      _chatList.assignAll(chatList);
-      AppLogger.debug('Chat list loaded: ${_chatList.length} chats');
-    } catch (e) {
-      AppLogger.error('Error fetching chat list: $e');
-      CustomSnackBar.show(
-        context,
-        'Error loading chats: $e',
-        type: ToastificationType.error,
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  String _formatTimestamp(String? timestamp) {
-    if (timestamp == null || timestamp.isEmpty) return '';
-    try {
-      final parsedDate = DateFormat('dd MMM').parse(timestamp);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final messageDate = DateTime(now.year, parsedDate.month, parsedDate.day);
-
-      if (messageDate == today) {
-        return 'Today';
-      } else {
-        return timestamp; // Keep original format (e.g., "16 May")
-      }
-    } catch (e) {
-      AppLogger.debug('Error parsing timestamp $timestamp: $e');
-      return timestamp; // Fallback to original
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Initialize ChatListController
+    final controller = Get.put(ChatListController());
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -88,12 +31,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
           Padding(
             padding: const EdgeInsets.all(15),
             child: TextField(
+              controller: controller.searchController,
               decoration: InputDecoration(
                 prefixIcon: const Icon(
                   Icons.search,
                   color: Color(0xff606060),
                 ),
-                hintText: "Search",
+                hintText: "Search by name",
                 hintStyle: TextStyle(
                   fontSize: 14.sp,
                   color: Colors.black54,
@@ -126,13 +70,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
           ),
           Expanded(
-            child: Obx(() => isLoading.value
+            child: Obx(() => controller.isLoading.value
                 ? const Center(child: CircularProgressIndicator())
-                : _chatList.isEmpty
-                ? const Center(child: Text('No chats available'))
+                : controller.filteredChatList.isEmpty
+                ? const Center(child: Text('No chats found'))
                 : RefreshIndicator(
-              onRefresh: _fetchChatList,
-              child: _chatListView(),
+              onRefresh: controller.fetchChatList,
+              child: _chatListView(controller),
             )),
           ),
         ],
@@ -140,34 +84,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  Widget _chatListView() {
+  Widget _chatListView(ChatListController controller) {
     return ListView.builder(
       padding: EdgeInsets.symmetric(vertical: 12.h),
-      itemCount: _chatList.length,
+      itemCount: controller.filteredChatList.length,
       itemBuilder: (context, index) {
-        final chat = _chatList[index];
-        final profileImage = chat['profile_image']?.startsWith('/')
-            ? '${ApiService.baseUrl}/api${chat['profile_image']}'
-            : chat['profile_image'] ?? 'assets/images/therapist.png';
+        final chat = controller.filteredChatList[index];
+        final profileImage = controller.getProfileImage(chat['profile_image']);
         final latestMessage = chat['latest_message']?.isNotEmpty == true
             ? chat['latest_message']
             : 'No messages yet';
-        final latestTimestamp = _formatTimestamp(chat['latest_timestamp']);
+        final latestTimestamp = controller.formatTimestamp(chat['latest_timestamp']);
 
         return ListTile(
-          onTap: () {
-            _chatList[index]['unread_count'] = 0;
-            _chatList.refresh();
-            Get.toNamed(
-              Routes.chatDetailsPage,
-              arguments: {
-                'chat_room_id': chat['chat_room_id'],
-                'therapist_user_id': chat['user_id'],
-                'name': chat['name'],
-                'image': profileImage,
-              },
-            );
-          },
+          onTap: () => controller.navigateToChatDetail(index),
           leading: CircleAvatar(
             backgroundImage: profileImage.startsWith('http')
                 ? NetworkImage(profileImage)

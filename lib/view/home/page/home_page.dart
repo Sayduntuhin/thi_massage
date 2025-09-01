@@ -57,8 +57,8 @@ class _HomeScreenState extends State<HomeScreen> {
         final List<Widget> _pages = [
           isTherapist ? EarningsPage() : WalletScreen(),
           ChatListScreen(),
-          isTherapist ? const TherapistHomePage() : HomeContent(),
-          isTherapist ? CalendarPage() : BookingsPage(),
+          isTherapist ? const TherapistHomePage() : ClientHomeContent(),
+          isTherapist ? CalendarPage() : ClientBookingsPage(),
           isTherapist ? TherapistEditPage() : ProfilePage(),
         ];
         return _pages[_selectedIndex];

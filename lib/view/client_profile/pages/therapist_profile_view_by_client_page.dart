@@ -62,18 +62,19 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
         therapistData = therapistProfile['therapist'] as Map<String, dynamic>?;
         reviews = therapistProfile['reviews'] as List<dynamic>? ?? [];
         therapistId = therapistData?['therapist_user_id'] as int?;
+
+        // Clean reviews data
         reviews = reviews?.map((review) {
           return {
             ...review,
-            'time_ago': _cleanString(review['time_ago'] as String),
+            'time_ago': _cleanString(review['time_ago'] as String? ?? ''),
           };
         }).toList();
 
+        // Validate therapist data with fallback for role
         if (therapistData == null ||
             !therapistData!.containsKey('name') ||
             !therapistData!.containsKey('image') ||
-            !therapistData!.containsKey('role') ||
-            (therapistData!['role'] as String?)?.isEmpty == true ||
             !therapistData!.containsKey('rating') ||
             !therapistData!.containsKey('sessions') ||
             !therapistData!.containsKey('joined') ||
@@ -83,6 +84,9 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
           reviews = null;
           therapistId = null;
           AppLogger.error('Invalid therapist data: Missing or empty required fields in therapist map');
+        } else {
+          // Ensure role is not null
+          therapistData!['role'] = therapistData!['role'] as String? ?? 'Unknown';
         }
       }
     }
@@ -401,8 +405,9 @@ class _TherapistProfileScreenState extends State<TherapistProfileScreen> {
   }
 
   Widget _buildSpecialtiesSection() {
+    final role = therapistData!['role'] as String; // Safe cast after null check in initState
     final specialties = [
-      {'name': therapistData!['role'], 'highlighted': true},
+      {'name': role, 'highlighted': true},
       {'name': '+ More', 'highlighted': false},
     ];
 

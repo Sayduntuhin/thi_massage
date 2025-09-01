@@ -1,20 +1,21 @@
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import '../view/widgets/app_logger.dart';
 
 class UserTypeController extends GetxController {
-  var isTherapist = false.obs; // false by default (Client)
-  var hasSelectedUserType = false.obs; // Flag to track if user has made a selection
-  var clientId = RxnInt(); // Optional integer to store client ID
-  var therapistId = RxnInt(); // Optional integer to store therapist ID
-  var role = RxString(''); // To store the user role (client/therapist)
+  var isTherapist = false.obs;
+  var hasSelectedUserType = false.obs;
+  var clientId = RxnInt();
+  var therapistId = RxnInt();
+  var role = RxString('');
   final box = GetStorage();
 
   @override
   void onInit() {
     super.onInit();
-    // Load saved values on initialization
     if (box.read('isTherapist') != null) {
       isTherapist.value = box.read('isTherapist');
+      AppLogger.debug("UserTypeController: Loaded isTherapist=${isTherapist.value}");
     }
     if (box.read('hasSelectedUserType') != null) {
       hasSelectedUserType.value = box.read('hasSelectedUserType');
@@ -27,15 +28,18 @@ class UserTypeController extends GetxController {
     }
     if (box.read('role') != null) {
       role.value = box.read('role');
+      AppLogger.debug("UserTypeController: Loaded role=${role.value}");
     }
   }
 
   void setUserType(bool isTherapist) {
     this.isTherapist.value = isTherapist;
     hasSelectedUserType.value = true;
-    // Save to storage
+    role.value = isTherapist ? 'therapist' : 'client';
     box.write('isTherapist', isTherapist);
     box.write('hasSelectedUserType', true);
+    box.write('role', role.value);
+    AppLogger.debug("UserTypeController: Set isTherapist=$isTherapist, role=${role.value}");
   }
 
   Future<void> setUserIds({int? clientId, int? therapistId, String? role}) async {
@@ -43,19 +47,16 @@ class UserTypeController extends GetxController {
       this.clientId.value = clientId;
       box.write('clientId', clientId);
     }
-
     if (therapistId != null) {
       this.therapistId.value = therapistId;
       box.write('therapistId', therapistId);
     }
-
     if (role != null) {
       this.role.value = role;
       box.write('role', role);
-
-      // Update isTherapist based on role for consistency
       isTherapist.value = role == 'therapist';
       box.write('isTherapist', isTherapist.value);
+      AppLogger.debug("UserTypeController: Set role=$role, isTherapist=${isTherapist.value}");
     }
   }
 
@@ -65,12 +66,11 @@ class UserTypeController extends GetxController {
     clientId.value = null;
     therapistId.value = null;
     role.value = '';
-
-    // Remove from storage
     box.remove('isTherapist');
     box.remove('hasSelectedUserType');
     box.remove('clientId');
     box.remove('therapistId');
     box.remove('role');
+    AppLogger.debug("UserTypeController: Reset to isTherapist=false, role=''");
   }
 }

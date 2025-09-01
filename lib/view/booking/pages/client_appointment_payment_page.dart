@@ -11,8 +11,9 @@ import '../../widgets/custom_appbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../api/api_service.dart';
 import '../../widgets/custom_snackbar.dart';
-import '../../widgets/loading_indicator.dart';
 import 'package:toastification/toastification.dart';
+
+import '../widgets/payment_webview_page.dart';
 
 class AppointmentPaymentScreen extends StatefulWidget {
   const AppointmentPaymentScreen({super.key});
@@ -32,6 +33,7 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
   bool isLoading = true;
   String? errorMessage;
   String? lastAppliedPromoCode;
+  bool isLoyaltyPointsApplied = false;
 
   final List<String> cardImages = [
     'assets/images/card1.png',
@@ -89,14 +91,16 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
     });
   }
 
-  Future<void> fetchPaymentSummary([String? promoCode]) async {
+  Future<void> fetchPaymentSummary([String? promoCode, bool? redeem, bool isLoyaltyAction = false]) async {
     try {
       setState(() => isLoading = true);
       AppLogger.debug(
-          'Fetching payment summary for booking_id: $bookingId, therapist_user_id: $therapistUserId');
+          'Fetching payment summary for booking_id: $bookingId, therapist_user_id: $therapistUserId, '
+              'promo_code: $promoCode, redeem: $redeem, isLoyaltyAction: $isLoyaltyAction');
       final response = await apiService.getPaymentSummary(
         bookingId,
         promoCode ?? (hasPromo && _promoController.text.isNotEmpty ? _promoController.text : null),
+        redeem,
       );
       AppLogger.debug('Payment Summary API Response: $response');
       setState(() {
@@ -104,6 +108,7 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
         sessionSummary = response['session_summary'] as Map<String, dynamic>?;
         isLoading = false;
         lastAppliedPromoCode = promoCode ?? _promoController.text;
+        isLoyaltyPointsApplied = (response['session_summary']['loyalty_points_used'] as int? ?? 0) > 0;
       });
       if (promoCode != null && response['session_summary']['promo_discount'] != 0.0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,6 +118,25 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
             type: ToastificationType.success,
           );
         });
+      }
+      if (isLoyaltyAction) {
+        if (redeem == true && response['session_summary']['loyalty_discount'] != 0.0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            CustomSnackBar.show(
+              context,
+              'Loyalty points applied successfully!',
+              type: ToastificationType.success,
+            );
+          });
+        } else if (redeem == false && response['session_summary']['loyalty_discount'] == 0.0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            CustomSnackBar.show(
+              context,
+              'Loyalty points removed successfully!',
+              type: ToastificationType.success,
+            );
+          });
+        }
       }
     } catch (e) {
       AppLogger.error('Fetch Payment Summary Error: $e');
@@ -133,7 +157,47 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         CustomSnackBar.show(
           context,
-          errorMessage!,
+          detailedError,
+          type: ToastificationType.error,
+        );
+      });
+    }
+  }
+
+  Future<void> _toggleLoyaltyPoints() async {
+    try {
+      setState(() => isLoading = true);
+      final newRedeemState = !isLoyaltyPointsApplied;
+      await fetchPaymentSummary(
+        hasPromo && _promoController.text.isNotEmpty ? _promoController.text : lastAppliedPromoCode,
+        newRedeemState,
+        true, // Indicate this is a loyalty action
+      );
+      setState(() {
+        isLoyaltyPointsApplied = newRedeemState;
+        isLoading = false;
+      });
+    } catch (e) {
+      AppLogger.error('Error applying/removing loyalty points: $e');
+      String detailedError = 'Failed to update loyalty points: $e';
+      if (e is NetworkException) {
+        detailedError = 'Network error: Please check your internet connection.';
+      } else if (e is UnauthorizedException) {
+        detailedError = 'Authentication failed: Please log in again.';
+      } else if (e is ServerException) {
+        detailedError = 'Server error: Please try again later.';
+      } else if (e is BadRequestException) {
+        detailedError = e.message;
+      }
+      setState(() {
+        isLoading = false;
+        errorMessage = detailedError;
+        isLoyaltyPointsApplied = false; // Reset on error to reflect API state
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        CustomSnackBar.show(
+          context,
+          detailedError,
           type: ToastificationType.error,
         );
       });
@@ -270,7 +334,9 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16.r),
                 color: Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 5.r, offset: Offset(0, 2))],
+                boxShadow: [
+                  BoxShadow(color: Colors.black26, blurRadius: 5.r, offset: Offset(0, 2))
+                ],
               ),
               child: Row(
                 children: [
@@ -333,7 +399,8 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                         SizedBox(height: 6.h),
                         Row(
                           children: [
-                            Icon(Icons.calendar_month, size: 20.sp, color: primaryTextColor),
+                            Icon(Icons.calendar_month,
+                                size: 20.sp, color: primaryTextColor),
                             SizedBox(width: 4.w),
                             Text(
                               formattedDateTime.split(', ')[0],
@@ -344,7 +411,8 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                               ),
                             ),
                             SizedBox(width: 10.w),
-                            Icon(Icons.access_time, size: 20.sp, color: primaryTextColor),
+                            Icon(Icons.access_time,
+                                size: 20.sp, color: primaryTextColor),
                             SizedBox(width: 4.w),
                             Text(
                               formattedDateTime.split(', ')[1],
@@ -386,7 +454,7 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                               if (!hasPromo) {
                                 _promoController.clear();
                                 lastAppliedPromoCode = null;
-                                fetchPaymentSummary();
+                                fetchPaymentSummary(null, isLoyaltyPointsApplied, false);
                               }
                             }),
                             activeColor: Color(0xFFD09C3F),
@@ -396,7 +464,8 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                             style: TextStyle(fontWeight: FontWeight.w500)),
                       ],
                     ),
-                    Text("Promo Code", style: TextStyle(fontWeight: FontWeight.w500)),
+                    Text("Promo Code",
+                        style: TextStyle(fontWeight: FontWeight.w500)),
                     SizedBox(height: 6.h),
                     Row(
                       children: [
@@ -407,8 +476,8 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                               filled: true,
                               fillColor: Colors.white,
                               hintText: "Enter promo code",
-                              contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12.w, vertical: 12.h),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8.r),
                                 borderSide: BorderSide.none,
@@ -439,7 +508,7 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                               });
                               return;
                             }
-                            fetchPaymentSummary(_promoController.text);
+                            fetchPaymentSummary(_promoController.text, isLoyaltyPointsApplied, false);
                           },
                           child: Container(
                             height: 48.h,
@@ -466,7 +535,7 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                       if (!hasPromo) {
                         _promoController.clear();
                         lastAppliedPromoCode = null;
-                        fetchPaymentSummary();
+                        fetchPaymentSummary(null, isLoyaltyPointsApplied, false);
                       }
                     }),
                     activeColor: Color(0xFFD09C3F),
@@ -481,8 +550,8 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
             Text("Session Summary",
                 style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
             SizedBox(height: 10.h),
-            _summaryRow(
-                "Massage Fee", "\$${sessionSummary!['massage_fee'].toStringAsFixed(1)}"),
+            _summaryRow("Massage Fee",
+                "\$${sessionSummary!['massage_fee'].toStringAsFixed(1)}"),
             _summaryRow(
               "Massage Table Deduction",
               "\$${sessionSummary!['massage_table_deduction'].toStringAsFixed(1)}",
@@ -494,13 +563,109 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                 "\$${sessionSummary!['promo_discount'].toStringAsFixed(1)}",
                 isNegative: true,
               ),
+            if (sessionSummary!['loyalty_discount'] != 0.0)
+              _summaryRow(
+                "Loyalty Points Discount",
+                "\$${sessionSummary!['loyalty_discount'].toStringAsFixed(1)}",
+                isNegative: true,
+              ),
             Divider(),
-            _summaryRow("Subtotal", "\$${sessionSummary!['subtotal'].toStringAsFixed(1)}"),
-            _summaryRow("Booking Fee", "\$${sessionSummary!['booking_fee'].toStringAsFixed(1)}"),
+            _summaryRow(
+                "Subtotal", "\$${sessionSummary!['subtotal'].toStringAsFixed(1)}"),
+            _summaryRow(
+                "Booking Fee", "\$${sessionSummary!['booking_fee'].toStringAsFixed(1)}"),
             _summaryRow("Tip", "\$${sessionSummary!['tip'].toStringAsFixed(1)}"),
             Divider(),
-
-            /// Total
+            Container(
+              padding: EdgeInsets.all(16.w),
+              margin: EdgeInsets.symmetric(vertical: 10.h),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.grey[300]!, width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.card_giftcard,
+                        color: primaryTextColor,
+                        size: 24.sp,
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        "Redeem Your Points",
+                        style: TextStyle(
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.w600,
+                          color: primaryTextColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.h),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 16.w),
+                    decoration: BoxDecoration(
+                      color: primaryTextColor.withAlpha(80),
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      "You have ${sessionSummary!['total_loyalty_points']} points (worth \$${sessionSummary!['loyalty_worth'].toStringAsFixed(2)} off)",
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
+                        color: buttonTextColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  GestureDetector(
+                    onTap: _toggleLoyaltyPoints,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 20.w,
+                          height: 20.h,
+                          decoration: BoxDecoration(
+                            color: isLoyaltyPointsApplied
+                                ? Color(0xFFB8860B)
+                                : Colors.transparent,
+                            border: Border.all(
+                                color: isLoyaltyPointsApplied
+                                    ? Color(0xFFB8860B)
+                                    : Colors.grey[600]!,
+                                width: 2),
+                            borderRadius: BorderRadius.circular(3.r),
+                          ),
+                          child: isLoyaltyPointsApplied
+                              ? Icon(
+                            Icons.check,
+                            size: 14.sp,
+                            color: Colors.white,
+                          )
+                              : null,
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Text(
+                            "Apply loyalty points for discount",
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xff787160),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -509,13 +674,13 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                 Text(
                   "\$${sessionSummary!['total'].toStringAsFixed(1)}",
                   style: TextStyle(
-                      fontSize: 18.sp, color: Color(0xFFD09C3F), fontWeight: FontWeight.bold),
+                      fontSize: 18.sp,
+                      color: Color(0xFFD09C3F),
+                      fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             SizedBox(height: 15.h),
-
-            /// Agreements
             RichText(
               text: TextSpan(
                 text: "By continuing, you agree to ",
@@ -539,54 +704,61 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                 ],
               ),
             ),
-
             SizedBox(
-              height: 0.035.sh,
-              child: CheckboxListTile(
-                value: agreeNearby,
-                onChanged: (val) => setState(() => agreeNearby = val ?? false),
-                title: Text("I agree to Thai massage near me.",
-                    style: TextStyle(fontSize: 13.sp)),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-              ),
-            ),
-            CheckboxListTile(
-              value: agreeTerms,
-              onChanged: (val) => setState(() => agreeTerms = val ?? false),
-              title: RichText(
-                text: TextSpan(
-                  style: TextStyle(color: Colors.black, fontSize: 13.sp),
-                  children: [
-                    TextSpan(text: "I agree to "),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: GestureDetector(
-                        onTap: () => Get.toNamed("/termsAndConditions"),
-                        child: Text(
-                          "Terms and Conditions of Use",
-                          style: TextStyle(
-                            color: primaryTextColor,
-                            decoration: TextDecoration.underline,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16.sp,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              height: 0.05.sh,
+              child: Theme(
+                data: Theme.of(context).copyWith(splashFactory: NoSplash.splashFactory,splashColor: Colors.transparent,highlightColor: Colors.transparent),
+                child: CheckboxListTile(
+                  value: agreeNearby,
+                  onChanged: (val) => setState(() => agreeNearby = val ?? false),
+                  title: Text("I agree to Thai massage near me.",
+                      style: TextStyle(fontSize: 13.sp)),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  hoverColor: Colors.transparent,
+
                 ),
               ),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
             ),
-
+            SizedBox(
+              height: 0.05.sh,
+              child: Theme(
+                data: Theme.of(context).copyWith(splashFactory: NoSplash.splashFactory,splashColor: Colors.transparent,highlightColor: Colors.transparent),
+                child: CheckboxListTile(
+                  value: agreeTerms,
+                  onChanged: (val) => setState(() => agreeTerms = val ?? false),
+                  title: RichText(
+                    text: TextSpan(
+                      style: TextStyle(color: Colors.black, fontSize: 13.sp),
+                      children: [
+                        TextSpan(text: "I agree to "),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: GestureDetector(
+                            onTap: () => Get.toNamed("/termsAndConditions"),
+                            child: Text(
+                              "Terms and Conditions of Use",
+                              style: TextStyle(
+                                color: primaryTextColor,
+                                decoration: TextDecoration.underline,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16.sp,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ),
+            ),
             SizedBox(height: 10.h),
-
-            /// Pay Button
             CustomGradientButton(
               text: "Pay",
-              onPressed: () {
+              onPressed: () async {
                 if (!agreeNearby || !agreeTerms) {
                   CustomSnackBar.show(
                     context,
@@ -598,13 +770,47 @@ class _AppointmentPaymentScreenState extends State<AppointmentPaymentScreen> {
                 AppLogger.debug(
                     'Initiating payment for booking_id: $bookingId, '
                         'therapist_user_id: $therapistUserId, therapist_name: $therapistName');
-                Get.toNamed('/appointmentDetailsPage', arguments: {
-                  'booking_id': bookingId,
-                  'massage_type': massageType,
-                  'session_summary': sessionSummary,
-                  'therapist_user_id': therapistUserId,
-                  'therapist_name': therapistName,
-                });
+                try {
+                  setState(() => isLoading = true);
+                  final paymentData = await apiService.initiatePayment(bookingId);
+                  setState(() => isLoading = false);
+
+                  final sessionUrl = paymentData['session_url'] as String?;
+                  final paymentId = paymentData['payment_id'] as int?;
+
+                  if (sessionUrl != null && paymentId != null) {
+                    // Navigate to WebView for payment
+                    Get.to(() => PaymentWebViewPage(
+                      sessionUrl: sessionUrl,
+                      bookingId: bookingId,
+                      paymentId: paymentId,
+                    ));
+                  } else {
+                    CustomSnackBar.show(
+                      context,
+                      'Invalid payment response',
+                      type: ToastificationType.error,
+                    );
+                  }
+                } catch (e) {
+                  setState(() => isLoading = false);
+                  String errorMessage = 'Failed to initiate payment: $e';
+                  if (e is NetworkException) {
+                    errorMessage = 'Network error: Please check your internet connection.';
+                  } else if (e is UnauthorizedException) {
+                    errorMessage = 'Authentication failed: Please log in again.';
+                  } else if (e is ServerException) {
+                    errorMessage = 'Server error: Please try again later.';
+                  } else if (e is BadRequestException) {
+                    errorMessage = e.message;
+                  }
+                  AppLogger.error(errorMessage);
+                  CustomSnackBar.show(
+                    context,
+                    errorMessage,
+                    type: ToastificationType.error,
+                  );
+                }
               },
             ),
             SizedBox(height: 40.h),

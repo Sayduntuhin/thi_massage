@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
@@ -10,13 +11,18 @@ import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import '../view/widgets/app_logger.dart';
+import 'auth_service.dart';
 
 class ApiService {
-  static const String _baseUrl = "http://192.168.10.139:3333";
+ static const String _baseUrl = "https://backend.thaimassagesnearmeapp.com";
+ // static const String _baseUrl = "http://10.10.13.75:3333";
   final http.Client _client;
+  http.Client get client => _client;
+
   final _storage = const FlutterSecureStorage();
   final Logger _logger;
   static String get baseUrl => _baseUrl;
+
 
   ApiService({http.Client? client})
       : _client = client ?? http.Client(),
@@ -31,8 +37,92 @@ class ApiService {
           ),
         );
 
+  Future<Map<String, dynamic>> _authenticatedRequest({
+    required String method,
+    required Uri uri,
+    Map<String, String>? headers,
+    String? body,
+  }) async {
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
 
+    headers = headers ?? {};
+    headers['Authorization'] = 'Bearer $accessToken';
+    headers['Content-Type'] = 'application/json';
 
+    if (kDebugMode) {
+      _logger.d('API Request: $method $uri');
+      _logger.d('Request Headers: $headers');
+      if (body != null) {
+        _logger.d('Request Body: $body');
+      }
+    }
+
+    http.Response response;
+    switch (method.toUpperCase()) {
+      case 'GET':
+        response = await _client.get(uri, headers: headers);
+        break;
+      case 'POST':
+        response = await _client.post(uri, headers: headers, body: body);
+        break;
+      case 'PATCH':
+        response = await _client.patch(uri, headers: headers, body: body);
+        break;
+      case 'DELETE':
+        response = await _client.delete(uri, headers: headers, body: body);
+        break;
+      default:
+        throw ApiException('Unsupported HTTP method: $method', 0);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Response Status: ${response.statusCode}');
+      _logger.d('API Response Body: ${response.body}');
+    }
+
+    if (response.statusCode == 401) {
+      Map<String, dynamic>? responseData;
+      try {
+        responseData = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        _logger.e('Failed to parse 401 response body: $e\nRaw body: ${response.body}');
+      }
+
+      if (responseData != null &&
+          responseData['code'] == 'token_not_valid' &&
+          responseData['messages']?.any((msg) => msg['message'] == 'Token is expired') == true) {
+        _logger.w('API: Token expired, triggering logout');
+        try {
+          // Check if AuthService is available
+          if (Get.isRegistered<AuthService>()) {
+            final authService = Get.find<AuthService>();
+            await authService.logout();
+            Get.snackbar('Session Expired', 'Your session has expired. Please log in again.');
+            Get.offAllNamed('/login');
+          } else {
+            _logger.e('AuthService not registered, cannot logout');
+            Get.snackbar('Error', 'Session expired, but logout failed. Please restart the app.');
+            Get.offAllNamed('/login');
+          }
+          throw TokenExpiredException('Token is expired', 401);
+        } catch (e) {
+          _logger.e('Failed to trigger logout: $e');
+          throw TokenExpiredException('Token is expired', 401);
+        }
+      }
+      throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+    }
+
+    return {
+      'statusCode': response.statusCode,
+      'body': response.body,
+      'headers': response.headers,
+    };
+  }
   ///------------------------------------API Auth------------------------------------///
   Future<Map<String, dynamic>> login(Map<String, dynamic> data) async {
     const String endpoint = '/auth/login/';
@@ -128,7 +218,7 @@ class ApiService {
     }
   }
   Future<Map<String, dynamic>> signUp(Map<String, dynamic> data) async {
-    const String endpoint = '/auth/signup/';
+    const String endpoint = '/auth/normal_signup/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     if (kDebugMode) {
@@ -322,8 +412,82 @@ class ApiService {
       }
     }
   }
-  Future<Map<String, dynamic>> verifyOtp(String email, String otp) async {
+  Future<Map<String, dynamic>> verifyOtpForSignUp(String email, String otp) async {
     const String endpoint = '/auth/verify_otp/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final data = {
+      "email": email,
+      "otp": otp,
+    };
+
+    if (kDebugMode) {
+      _logger.d('API Request Verify OTP: POST $uri');
+      _logger.d('Request Headers: {"Content-Type": "application/json"}');
+      _logger.d('Request Body: ${jsonEncode(data)}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Verify OTP: ${response.statusCode}');
+        _logger.d('API Response Headers Verify OTP: ${response.headers}');
+        _logger.d('API Response Body Verify OTP: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          return jsonDecode(response.body) as Map<String, dynamic>;
+        case 400:
+          String errorMessage = 'Invalid OTP or email.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('otp') && errorBody['otp'] is List && errorBody['otp'].isNotEmpty) {
+              errorMessage = errorBody['otp'][0];
+            } else if (errorBody.containsKey('email') && errorBody['email'] is List && errorBody['email'].isNotEmpty) {
+              errorMessage = errorBody['email'][0];
+            } else if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Verify OTP endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to verify OTP: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      if (kDebugMode) {
+        _logger.e('Network Error: $e');
+      }
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      if (kDebugMode) {
+        _logger.e('Unexpected Error: $e');
+      }
+      throw ApiException('An error occurred while verifying OTP: $e');
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
+    }
+  }
+  Future<Map<String, dynamic>> verifyOtpForForgetPassword(String email, String otp) async {
+    const String endpoint = '/auth/verify-otp/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     final data = {
@@ -466,83 +630,12 @@ class ApiService {
     }
   }
   Future<Map<String, dynamic>> resetPasswordRequest(String email) async {
-    const String endpoint = '/users/password/reset-request/';
+    const String endpoint = '/auth/forgot-password/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
+    final data = {"email": email};
 
     if (kDebugMode) {
-      _logger.d('API Request: POST $uri');
-      _logger.d('Request Headers: {"Content-Type": "application/json"}');
-      _logger.d('Request Body: {"email": "$email"}');
-    }
-
-    try {
-      final response = await _client.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
-      );
-
-      if (kDebugMode) {
-        _logger.d('API Response Status: ${response.statusCode}');
-        _logger.d('API Response Headers: ${response.headers}');
-        _logger.d('API Response Body: ${response.body}');
-      }
-
-      switch (response.statusCode) {
-        case 200:
-        case 201:
-          return jsonDecode(response.body) as Map<String, dynamic>;
-        case 400:
-          String errorMessage = 'Invalid email provided.';
-          try {
-            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
-            if (errorBody.containsKey('email') && errorBody['email'] is List && errorBody['email'].isNotEmpty) {
-              errorMessage = errorBody['email'][0];
-            } else if (errorBody.containsKey('error') && errorBody['error'] is String) {
-              errorMessage = errorBody['error'];
-            }
-          } catch (e) {
-            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
-          }
-          throw BadRequestException(errorMessage, response.statusCode);
-        case 401:
-          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
-        case 403:
-          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
-        case 404:
-          throw NotFoundException('Reset password endpoint not found: $uri', response.statusCode);
-        case 500:
-          throw ServerException('Server error: ${response.body}', response.statusCode);
-        default:
-          throw ApiException('Failed to request password reset: ${response.body}', response.statusCode);
-      }
-    } on http.ClientException catch (e) {
-      if (kDebugMode) {
-        _logger.e('Network Error: $e');
-      }
-      throw NetworkException('Check your network connection');
-    } catch (e) {
-      if (kDebugMode) {
-        _logger.e('Unexpected Error: $e');
-      }
-      throw ApiException("No user found with the provided email address.");
-    } finally {
-      if (kDebugMode) {
-        _logger.d('API Call Completed: $endpoint');
-      }
-    }
-  }
-  Future<Map<String, dynamic>> resetPasswordActivate(String email, String otp) async {
-    const String endpoint = '/users/password/reset-activate/';
-    final Uri uri = Uri.parse('$_baseUrl$endpoint');
-
-    final data = {
-      "email": email,
-      "otp": otp,
-    };
-
-    if (kDebugMode) {
-      _logger.d('API Request: POST $uri');
+      _logger.d('API Request Reset Password: POST $uri');
       _logger.d('Request Headers: {"Content-Type": "application/json"}');
       _logger.d('Request Body: ${jsonEncode(data)}');
     }
@@ -552,77 +645,164 @@ class ApiService {
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(data),
-      );
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        _logger.e('Request timed out');
+        throw NetworkException('Request timed out');
+      });
 
       if (kDebugMode) {
-        _logger.d('API Response Status: ${response.statusCode}');
-        _logger.d('API Response Headers: ${response.headers}');
-        _logger.d('API Response Body: ${response.body}');
+        _logger.d('API Response Status Reset Password: ${response.statusCode}');
+        _logger.d('API Response Headers Reset Password: ${response.headers}');
+        _logger.d('API Response Body Reset Password: ${response.body}');
+      }
+
+      Map<String, dynamic>? responseData;
+      if (response.headers['content-type']?.contains('application/json') == true) {
+        try {
+          responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
+          throw ServerException('Invalid server response format', response.statusCode);
+        }
+      } else {
+        _logger.w('Non-JSON response received: ${response.body}');
       }
 
       switch (response.statusCode) {
         case 200:
         case 201:
-          return jsonDecode(response.body) as Map<String, dynamic>;
+          if (responseData == null) {
+            throw ServerException('Empty response body', response.statusCode);
+          }
+          return responseData;
         case 400:
-          String errorMessage = 'Invalid OTP or email.';
-          try {
-            final errorBody = jsonDecode(response.body);
-            if (errorBody is Map<String, dynamic>) {
-              if (errorBody.containsKey('otp') && errorBody['otp'] is List && errorBody['otp'].isNotEmpty) {
-                errorMessage = errorBody['otp'][0];
-              } else if (errorBody.containsKey('email') && errorBody['email'] is List && errorBody['email'].isNotEmpty) {
-                errorMessage = errorBody['email'][0];
-              } else if (errorBody.containsKey('error') && errorBody['error'] is String) {
-                errorMessage = errorBody['error'];
-              }
-            } else if (errorBody is String) {
-              errorMessage = errorBody;
+        case 404: // Handle 404 as a validation error
+          String errorMessage = 'Invalid email provided.';
+          if (responseData != null) {
+            if (responseData.containsKey('email') && responseData['email'] is List && responseData['email'].isNotEmpty) {
+              errorMessage = responseData['email'][0];
+            } else if (responseData.containsKey('error') && responseData['error'] is String) {
+              errorMessage = responseData['error']; // Extract "Invalid email."
             }
-          } catch (e) {
-            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
-            errorMessage = response.body;
           }
           throw BadRequestException(errorMessage, response.statusCode);
         case 401:
           throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
         case 403:
           throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
-        case 404:
-          throw NotFoundException('Reset activate endpoint not found: $uri', response.statusCode);
         case 500:
           throw ServerException('Server error: ${response.body}', response.statusCode);
         default:
-          throw ApiException('Failed to activate password reset: ${response.body}', response.statusCode);
+          String errorMessage = 'Failed to request password reset.';
+          if (responseData != null && responseData.containsKey('error') && responseData['error'] is String) {
+            errorMessage = responseData['error'];
+          } else if (response.body.isNotEmpty) {
+            errorMessage = response.body;
+          }
+          throw ApiException(errorMessage, response.statusCode);
       }
     } on http.ClientException catch (e) {
       if (kDebugMode) {
         _logger.e('Network Error: $e');
       }
       throw NetworkException('Check your network connection');
-    } catch (e) {
-      if (kDebugMode) {
-        _logger.e('Unexpected Error: $e');
-      }
-      throw ApiException('You Input Wrong OTP');
     } finally {
       if (kDebugMode) {
         _logger.d('API Call Completed: $endpoint');
       }
     }
   }
-  Future<String> resetPassword(String newPassword, String? accessToken) async {
-    const String endpoint = '/users/password/reset/';
-    final Uri uri = Uri.parse('$_baseUrl$endpoint');
-
-    final data = {
-      "new_password": newPassword,
-    };
+  Future<Map<String, dynamic>> resetPassword(String email, String password) async {
+    const String endpoint = '/auth/reset-password/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint');
+    final data = {"email": email, "password": password};
 
     if (kDebugMode) {
-      _logger.d('API Request: POST $uri');
-      _logger.d('Request Headers: {"Content-Type": "application/json", "Authorization": "Bearer $accessToken"}');
+      _logger.d('API Request Reset Password: POST $uri');
+      _logger.d('Request Headers: {"Content-Type": "application/json"}');
       _logger.d('Request Body: ${jsonEncode(data)}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        _logger.e('Request timed out');
+        throw NetworkException('Request timed out');
+      });
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Reset Password: ${response.statusCode}');
+        _logger.d('API Response Headers Reset Password: ${response.headers}');
+        _logger.d('API Response Body Reset Password: ${response.body}');
+      }
+
+      Map<String, dynamic>? responseData;
+      if (response.headers['content-type']?.contains('application/json') == true) {
+        try {
+          responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
+          throw ServerException('Invalid server response format', response.statusCode);
+        }
+      } else {
+        _logger.w('Non-JSON response received: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          if (responseData == null) {
+            throw ServerException('Empty response body', response.statusCode);
+          }
+          if (responseData['message'] == 'Password reset successful.') {
+            return responseData;
+          } else {
+            throw ApiException('Unexpected response: ${response.body}', response.statusCode);
+          }
+        case 400:
+        case 404:
+          String errorMessage = 'Failed to reset password.';
+          if (responseData != null && responseData.containsKey('error')) {
+            errorMessage = responseData['error'];
+          } else if (responseData != null && responseData.containsKey('detail')) {
+            errorMessage = responseData['detail'];
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to reset password: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e, stackTrace) {
+      _logger.e('Unexpected Error: $e\nStackTrace: $stackTrace');
+      throw ApiException('An error occurred while resetting password: $e');
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
+    }
+  }
+
+  Future<void> changePassword(Map<String, String> payload) async {
+    const String endpoint = '/auth/change-password/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Change Password: POST $uri');
+      _logger.d('Request Headers: {"Content-Type": "application/json", "Authorization": "Bearer $accessToken"}');
+      _logger.d('Request Body: ${jsonEncode(payload)}');
     }
 
     try {
@@ -630,35 +810,49 @@ class ApiService {
         uri,
         headers: {
           'Content-Type': 'application/json',
-          if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+          'Authorization': 'Bearer $accessToken',
         },
-        body: jsonEncode(data),
-      );
+        body: jsonEncode(payload),
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        _logger.e('Request timed out');
+        throw NetworkException('Request timed out');
+      });
 
       if (kDebugMode) {
-        _logger.d('API Response Status: ${response.statusCode}');
-        _logger.d('API Response Headers: ${response.headers}');
-        _logger.d('API Response Body: ${response.body}');
+        _logger.d('API Response Status Change Password: ${response.statusCode}');
+        _logger.d('API Response Headers Change Password: ${response.headers}');
+        _logger.d('API Response Body Change Password: ${response.body}');
+      }
+
+      Map<String, dynamic>? responseData;
+      if (response.headers['content-type']?.contains('application/json') == true) {
+        try {
+          responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
+          throw ServerException('Invalid server response format', response.statusCode);
+        }
+      } else {
+        _logger.w('Non-JSON response received: ${response.body}');
       }
 
       switch (response.statusCode) {
         case 200:
         case 201:
-          return response.body.replaceAll('"', '');
+          if (responseData == null) {
+            throw ServerException('Empty response body', response.statusCode);
+          }
+          return; // Success, no return value needed
         case 400:
-          String errorMessage = 'Invalid request.';
-          try {
-            final errorBody = jsonDecode(response.body);
-            if (errorBody is Map<String, dynamic> && errorBody.containsKey('detail')) {
-              errorMessage = errorBody['detail'];
-            } else if (errorBody is Map<String, dynamic> && errorBody.containsKey('new_password') && errorBody['new_password'] is List && errorBody['new_password'].isNotEmpty) {
-              errorMessage = errorBody['new_password'][0];
-            } else if (errorBody is String) {
-              errorMessage = errorBody;
+          String errorMessage = 'Invalid input data.';
+          if (responseData != null) {
+            if (responseData.containsKey('current_password') && responseData['current_password'] is List && responseData['current_password'].isNotEmpty) {
+              errorMessage = responseData['current_password'][0];
+            } else if (responseData.containsKey('new_password') && responseData['new_password'] is List && responseData['new_password'].isNotEmpty) {
+              errorMessage = responseData['new_password'][0];
+            } else if (responseData.containsKey('error') && responseData['error'] is String) {
+              errorMessage = responseData['error'];
             }
-          } catch (e) {
-            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
-            errorMessage = response.body.replaceAll('"', '');
           }
           throw BadRequestException(errorMessage, response.statusCode);
         case 401:
@@ -666,31 +860,31 @@ class ApiService {
         case 403:
           throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
         case 404:
-          throw NotFoundException('Reset password endpoint not found: $uri', response.statusCode);
+          throw NotFoundException('Change password endpoint not found: $uri', response.statusCode);
         case 500:
           throw ServerException('Server error: ${response.body}', response.statusCode);
         default:
-          throw ApiException('Failed to reset password: ${response.body}', response.statusCode);
+          String errorMessage = 'Failed to change password.';
+          if (responseData != null && responseData.containsKey('error') && responseData['error'] is String) {
+            errorMessage = responseData['error'];
+          } else if (response.body.isNotEmpty) {
+            errorMessage = response.body;
+          }
+          throw ApiException(errorMessage, response.statusCode);
       }
     } on http.ClientException catch (e) {
       if (kDebugMode) {
         _logger.e('Network Error: $e');
       }
       throw NetworkException('Check your network connection');
-    } catch (e) {
-      if (e is! BadRequestException && e is! UnauthorizedException && e is! ForbiddenException && e is! NotFoundException && e is! ServerException && e is! ApiException) {
-        if (kDebugMode) {
-          _logger.e('Unexpected Error: $e');
-        }
-        throw ApiException('An unexpected error occurred: $e');
-      }
-      rethrow;
     } finally {
       if (kDebugMode) {
         _logger.d('API Call Completed: $endpoint');
       }
     }
   }
+
+
 
   ///------------------------------------Booking----------------------------------///
   Future<Map<String, dynamic>> createBooking(Map<String, dynamic> payload) async {
@@ -732,20 +926,11 @@ class ApiService {
           _logger.d('Booking created successfully: $responseData');
           return responseData;
         case 400:
-          String errorMessage = 'Invalid booking data.';
-          try {
-            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
-            if (errorBody.containsKey('age_range') && errorBody['age_range'] is List && errorBody['age_range'].isNotEmpty) {
-              errorMessage = 'Please select a valid age range.';
-            } else if (errorBody.containsKey('error') && errorBody['error'] is String) {
-              errorMessage = errorBody['error'];
-            } else if (errorBody.isNotEmpty) {
-              errorMessage = errorBody.entries.first.value is List ? errorBody.entries.first.value[0] : errorBody.entries.first.value.toString();
-            }
-          } catch (e) {
-            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
-          }
-          throw BadRequestException(errorMessage, response.statusCode);
+          _logger.d('400 response body: ${response.body}');
+          throw BadRequestException(response.body, response.statusCode); // Pass raw JSON body
+        case 409: // Add case for Conflict
+          _logger.d('409 response body: ${response.body}');
+          throw BadRequestException(response.body, response.statusCode); // Pass raw JSON body
         case 401:
           throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
         case 403:
@@ -755,7 +940,7 @@ class ApiService {
         case 500:
           throw ServerException('Server error: ${response.body}', response.statusCode);
         default:
-          throw ApiException('Failed to create booking: ${response.body}', response.statusCode);
+          throw ApiException('Failed to create booking: ${response.body}', response.statusCode); // Use response.body for better context
       }
     } on SocketException catch (e) {
       if (kDebugMode) {
@@ -838,6 +1023,74 @@ class ApiService {
       throw ApiException('Failed to fetch bookings: $e');
     }
   }
+
+  ///-----------------------Cancel Booking method-----------------------///
+  Future<Map<String, dynamic>> cancelBooking(int bookingId) async {
+    const String endpoint = '/client/bookings/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint$bookingId/cancel/');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found for cancellation');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Cancel Booking: POST $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Cancel Booking: ${response.statusCode}');
+        _logger.d('API Response Headers Cancel Booking: ${response.headers}');
+        _logger.d('API Response Body Cancel Booking: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          _logger.d('Booking cancelled successfully: $responseData');
+          return responseData; // Returns {"message": "Booking cancelled.", "refund_amount": 209.975, "cancelled_by": "client"}
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Cancellation endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error try again}', response.statusCode);
+        default:
+          throw ApiException('Failed to cancel booking}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to cancel booking Something went wrong');
+    }
+  }
+
   ///------------------------------------Get Therapists by Massage Type method----------------------------------///
   Future<List<Map<String, dynamic>>> getTherapistsByMassageType(String massageType) async {
     const String endpoint = '/client/therapists-by-massage-type/';
@@ -936,13 +1189,27 @@ class ApiService {
 
         switch (response.statusCode) {
           case 200:
-            final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-            final List<dynamic> results = responseData['results'] ?? [];
-            allMassageTypes.addAll(results.cast<Map<String, dynamic>>());
-            // Check for next page
-            url = responseData['next']?.toString() ?? '';
-            if (kDebugMode) {
-              _logger.d('Fetched ${results.length} massage types, next URL: $url');
+            final responseBody = jsonDecode(response.body);
+
+            // Handle both response formats
+            if (responseBody is List) {
+              // API returns array directly: [{"id": 1, ...}, {"id": 2, ...}]
+              allMassageTypes.addAll(responseBody.cast<Map<String, dynamic>>());
+              url = ''; // No pagination when returning array directly
+              if (kDebugMode) {
+                _logger.d('Fetched ${responseBody.length} massage types (direct array)');
+              }
+            } else if (responseBody is Map<String, dynamic>) {
+              // API returns paginated response: {"results": [...], "next": "..."}
+              final List<dynamic> results = responseBody['results'] ?? [];
+              allMassageTypes.addAll(results.cast<Map<String, dynamic>>());
+              // Check for next page
+              url = responseBody['next']?.toString() ?? '';
+              if (kDebugMode) {
+                _logger.d('Fetched ${results.length} massage types, next URL: $url');
+              }
+            } else {
+              throw ApiException('Unexpected response format: ${responseBody.runtimeType}', 200);
             }
             break;
           case 401:
@@ -983,65 +1250,41 @@ class ApiService {
   Future<Map<String, dynamic>> getTherapistOwnProfile() async {
     const String endpoint = '/therapist/therapists/profile/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) {
-      _logger.e('No access token found');
-      throw UnauthorizedException('No access token found', 401);
-    }
-    if (kDebugMode) {
-      _logger.d('API Request Get Therapist Own Profile: GET $uri');
-      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
-    }
+
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-        },
-      );
-      if (kDebugMode) {
-        _logger.d('API Response Status Get Therapist Own Profile: ${response.statusCode}');
-        _logger.d('API Response Body Get Therapist Own Profile: ${response.body}');
-      }
-      Map<String, dynamic>? responseData;
-      if (response.headers['content-type']?.contains('application/json') == true) {
-        try {
-          responseData = jsonDecode(response.body) as Map<String, dynamic>;
-        } catch (e) {
-          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
-          throw ServerException('Invalid server response format', response.statusCode);
-        }
-      } else {
-        _logger.w('Non-JSON response received: ${response.body}');
-      }
-      switch (response.statusCode) {
+      final result = await _authenticatedRequest(method: 'GET', uri: uri);
+      final responseBody = result['body'];
+      final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      switch (result['statusCode']) {
         case 200:
-          if (responseData == null) {
-            throw ServerException('Empty response body', response.statusCode);
-          }
           if (responseData['image'] != null && responseData['image'] is String && !responseData['image'].startsWith('http')) {
             responseData['image'] = '$_baseUrl/therapist${responseData['image']}';
           }
           _logger.d('Therapist own profile fetched successfully: $responseData');
           return responseData;
-        case 401:
-          throw UnauthorizedException('Invalid or expired token', response.statusCode);
+        case 400:
+          throw BadRequestException('Invalid request: $responseBody', result['statusCode']);
         case 403:
-          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+          throw ForbiddenException('Access denied: $responseBody', result['statusCode']);
         case 404:
-          throw NotFoundException('Therapist profile not found: $uri', response.statusCode);
+          throw NotFoundException('Therapist profile not found: $uri', result['statusCode']);
         case 500:
           throw ServerException(
-            responseData?['detail']?.toString() ?? 'Server error. Please try again later.',
-            response.statusCode,
+            responseData['detail']?.toString() ?? 'Server error. Please try again later.',
+            result['statusCode'],
           );
         default:
-          throw ApiException('Failed to fetch therapist profile: ${response.body}', response.statusCode);
+          throw ApiException('Failed to fetch therapist profile: $responseBody', result['statusCode']);
       }
+    } on TokenExpiredException {
+      rethrow; // Let controllers handle logout
     } on http.ClientException catch (e) {
       _logger.e('Network Error: $e');
       throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch therapist profile: $e', 0);
     } finally {
       if (kDebugMode) {
         _logger.d('API Call Completed: $endpoint');
@@ -1051,66 +1294,40 @@ class ApiService {
   Future<void> patchTherapistLocation({required String latitude, required String longitude}) async {
     const String endpoint = '/therapist/therapists/profile/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) {
-      _logger.e('No access token found');
-      throw UnauthorizedException('No access token found', 401);
-    }
     final body = jsonEncode({
       'latitude': latitude,
       'longitude': longitude,
     });
-    if (kDebugMode) {
-      _logger.d('API Request Patch Therapist Profile: PATCH $uri');
-      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
-      _logger.d('Request Body: $body');
-    }
+
     try {
-      final response = await _client.patch(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-        },
-        body: body,
-      );
-      if (kDebugMode) {
-        _logger.d('API Response Status Patch Therapist Profile: ${response.statusCode}');
-        _logger.d('API Response Body Patch Therapist Profile: ${response.body}');
-      }
-      Map<String, dynamic>? responseData;
-      if (response.headers['content-type']?.contains('application/json') == true) {
-        try {
-          responseData = jsonDecode(response.body) as Map<String, dynamic>;
-        } catch (e) {
-          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
-          throw ServerException('Invalid server response format', response.statusCode);
-        }
-      }
-      switch (response.statusCode) {
+      final result = await _authenticatedRequest(method: 'PATCH', uri: uri, body: body);
+      final responseBody = result['body'];
+      final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      switch (result['statusCode']) {
         case 200:
         case 201:
           _logger.d('Therapist profile updated successfully: $responseData');
           return;
         case 400:
           throw ApiException(
-            responseData?['detail']?.toString() ?? 'Invalid data provided: ${response.body}',
-            response.statusCode,
+            responseData['detail']?.toString() ?? 'Invalid data provided: $responseBody',
+            result['statusCode'],
           );
-        case 401:
-          throw UnauthorizedException('Invalid or expired token', response.statusCode);
         case 403:
-          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+          throw ForbiddenException('Access denied: $responseBody', result['statusCode']);
         case 404:
-          throw NotFoundException('Therapist profile not found: $uri', response.statusCode);
+          throw NotFoundException('Therapist profile not found: $uri', result['statusCode']);
         case 500:
           throw ServerException(
-            responseData?['detail']?.toString() ?? 'Server error. Please try again later.',
-            response.statusCode,
+            responseData['detail']?.toString() ?? 'Server error. Please try again later.',
+            result['statusCode'],
           );
         default:
-          throw ApiException('Failed to update therapist profile: ${response.body}', response.statusCode);
+          throw ApiException('Failed to update therapist profile: $responseBody', result['statusCode']);
       }
+    } on TokenExpiredException {
+      rethrow;
     } on http.ClientException catch (e) {
       _logger.e('Network Error: $e');
       throw NetworkException('Check your network connection');
@@ -1119,8 +1336,7 @@ class ApiService {
         _logger.d('API Call Completed: $endpoint');
       }
     }
-  }
-  Future<void> updateTherapistAvailability(bool availability) async {
+  }  Future<void> updateTherapistAvailability(bool availability) async {
     const String endpoint = '/therapist/therapists/profile/';
     final Uri uri = Uri.parse('$baseUrl$endpoint');
     final accessToken = await _storage.read(key: 'access_token');
@@ -1210,70 +1426,41 @@ class ApiService {
     const String endpoint = '/client/client/profile/';
     final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) {
-      _logger.e('No access token found');
-      throw UnauthorizedException('No access token found', 401);
-    }
-
-    if (kDebugMode) {
-      _logger.d('API Request Get Client Profile: GET $uri');
-      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
-    }
-
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-        },
-      );
+      final result = await _authenticatedRequest(method: 'GET', uri: uri);
+      final responseBody = result['body'];
+      final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
 
-      if (kDebugMode) {
-        _logger.d('API Response Status Get Client Profile: ${response.statusCode}');
-        _logger.d('API Response Headers Get Client Profile: ${response.headers}');
-        _logger.d('API Response Body Get Client Profile: ${response.body}');
-      }
-
-      switch (response.statusCode) {
+      switch (result['statusCode']) {
         case 200:
-          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-          // Adjust image URL to include /api/
-          if (responseData['image'] != null && responseData['image'] != '/media/documents/default.jpg') {
-            if (!responseData['image'].startsWith('/client/')) {
-              responseData['image'] = '/client${responseData['image']}';
-            }
-          }
-          _logger.d('Client client_profile fetched successfully: $responseData');
+          _logger.d('Client profile fetched successfully: $responseData');
           return responseData;
         case 400:
-          String errorMessage = 'Invalid request.';
-          try {
-            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
-            if (errorBody.containsKey('error') && errorBody['error'] is String) {
-              errorMessage = errorBody['error'];
-            }
-          } catch (e) {
-            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
-          }
-          throw BadRequestException(errorMessage, response.statusCode);
-        case 401:
-          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+          throw BadRequestException('Invalid request: $responseBody', result['statusCode']);
         case 403:
-          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+          throw ForbiddenException('Access denied: $responseBody', result['statusCode']);
         case 404:
-          throw NotFoundException('Client client_profile endpoint not found: $uri', response.statusCode);
+          throw NotFoundException('Client profile not found: $uri', result['statusCode']);
         case 500:
-          throw ServerException('Server error: ${response.body}', response.statusCode);
+          throw ServerException(
+            responseData['detail']?.toString() ?? 'Server error. Please try again later.',
+            result['statusCode'],
+          );
         default:
-          throw ApiException('Failed to fetch client client_profile: ${response.body}', response.statusCode);
+          throw ApiException('Failed to fetch client profile: $responseBody', result['statusCode']);
       }
+    } on TokenExpiredException {
+      rethrow;
     } on http.ClientException catch (e) {
       _logger.e('Network Error: $e');
       throw NetworkException('Check your network connection');
     } catch (e) {
       _logger.e('Unexpected Error: $e');
-      throw ApiException('Failed to fetch client client_profile: $e');
+      throw ApiException('Failed to fetch client profile: $e', 0);
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
     }
   }
 
@@ -1803,38 +1990,15 @@ class ApiService {
   ///-----------------------Get Upcoming Appointments method-----------------------///
   Future<List<Map<String, dynamic>>> getUpcomingAppointments() async {
     const String endpoint = '/therapist/upcoming-appointments/';
-    final Uri uri = Uri.parse('$baseUrl$endpoint');
-
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) {
-      _logger.e('No access token found');
-      throw UnauthorizedException('No access token found', 401);
-    }
-
-    if (kDebugMode) {
-      _logger.d('API Request Get Upcoming Appointments: GET $uri');
-      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
-    }
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-        },
-      );
+      final result = await _authenticatedRequest(method: 'GET', uri: uri);
+      final responseBody = result['body'];
+      final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
 
-      final responseBody = response.body;
-
-      if (kDebugMode) {
-        _logger.d('API Response Status Get Upcoming Appointments: ${response.statusCode}');
-        _logger.d('API Response Body Get Upcoming Appointments: $responseBody');
-      }
-
-      switch (response.statusCode) {
+      switch (result['statusCode']) {
         case 200:
-          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
           final appointments = List<Map<String, dynamic>>.from(responseData['upcoming_appointments'] ?? []);
           _logger.d('Upcoming appointments fetched successfully: $appointments');
           return appointments;
@@ -1848,63 +2012,40 @@ class ApiService {
           } catch (e) {
             _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
           }
-          throw BadRequestException(errorMessage, response.statusCode);
-        case 401:
-          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+          throw BadRequestException(errorMessage, result['statusCode']);
         case 403:
-          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+          throw ForbiddenException('Access denied: $responseBody', result['statusCode']);
         case 404:
-          throw NotFoundException('Upcoming appointments endpoint not found: $uri', response.statusCode);
+          throw NotFoundException('Upcoming appointments endpoint not found: $uri', result['statusCode']);
         case 500:
-          throw ServerException('Server error: $responseBody', response.statusCode);
+          throw ServerException('Server error: $responseBody', result['statusCode']);
         default:
-          throw ApiException('Failed to fetch upcoming appointments: $responseBody', response.statusCode);
+          throw ApiException('Failed to fetch upcoming appointments: $responseBody', result['statusCode']);
       }
+    } on TokenExpiredException {
+      rethrow;
     } on http.ClientException catch (e) {
       _logger.e('Network Error: $e');
       throw NetworkException('Check your network connection');
     } catch (e) {
       _logger.e('Unexpected Error: $e');
-      throw ApiException('Failed to fetch upcoming appointments: $e');
+      throw ApiException('Failed to fetch upcoming appointments: $e', 0);
     }
   }
   ///-----------------------Get Appointments Requests method-----------------------///
   Future<List<Map<String, dynamic>>> getAppointmentRequests() async {
     const String endpoint = '/therapist/appointment-requests/';
-    final Uri uri = Uri.parse('$baseUrl$endpoint');
-
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken == null) {
-      _logger.e('No access token found');
-      throw UnauthorizedException('No access token found', 401);
-    }
-
-    if (kDebugMode) {
-      _logger.d('API Request Get Appointments Requests: GET $uri');
-      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
-    }
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
 
     try {
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-        },
-      );
+      final result = await _authenticatedRequest(method: 'GET', uri: uri);
+      final responseBody = result['body'];
+      final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
 
-      final responseBody = response.body;
-
-      if (kDebugMode) {
-        _logger.d('API Response Status Get Appointments Requests: ${response.statusCode}');
-        _logger.d('API Response Body Get Appointments Requests: $responseBody');
-      }
-
-      switch (response.statusCode) {
+      switch (result['statusCode']) {
         case 200:
-          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
           final appointments = List<Map<String, dynamic>>.from(responseData['appointment_requests'] ?? []);
-          _logger.d('Appointments Request fetched successfully: $appointments');
+          _logger.d('Appointment requests fetched successfully: $appointments');
           return appointments;
         case 400:
           String errorMessage = 'Invalid request.';
@@ -1916,24 +2057,24 @@ class ApiService {
           } catch (e) {
             _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
           }
-          throw BadRequestException(errorMessage, response.statusCode);
-        case 401:
-          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+          throw BadRequestException(errorMessage, result['statusCode']);
         case 403:
-          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+          throw ForbiddenException('Access denied: $responseBody', result['statusCode']);
         case 404:
-          throw NotFoundException('Appointments Request endpoint not found: $uri', response.statusCode);
+          throw NotFoundException('Appointment requests endpoint not found: $uri', result['statusCode']);
         case 500:
-          throw ServerException('Server error: $responseBody', response.statusCode);
+          throw ServerException('Server error: $responseBody', result['statusCode']);
         default:
-          throw ApiException('Failed to fetch Appointments Request: $responseBody', response.statusCode);
+          throw ApiException('Failed to fetch appointment requests: $responseBody', result['statusCode']);
       }
+    } on TokenExpiredException {
+      rethrow;
     } on http.ClientException catch (e) {
       _logger.e('Network Error: $e');
       throw NetworkException('Check your network connection');
     } catch (e) {
       _logger.e('Unexpected Error: $e');
-      throw ApiException('Failed to fetch Appointments Request: $e');
+      throw ApiException('Failed to fetch appointment requests: $e', 0);
     }
   }
   ///-----------------------Get Bookings by Date method-----------------------///
@@ -2004,10 +2145,12 @@ class ApiService {
     }
   }
   ///-----------------------Get Payment Summary method-----------------------///
-  Future<Map<String, dynamic>> getPaymentSummary(int bookingId, [String? promoCode]) async {
-    final uri = promoCode != null
-        ? Uri.parse('${baseUrl}/client/payment_summary_view/$bookingId/?promo_code=$promoCode')
-        : Uri.parse('${baseUrl}/client/payment_summary_view/$bookingId/');
+  Future<Map<String, dynamic>> getPaymentSummary(int bookingId, [String? promoCode, bool? redeem]) async {
+    final queryParameters = {
+      if (promoCode != null) 'promo_code': promoCode,
+      if (redeem != null) 'redeem': redeem.toString(),
+    };
+    final uri = Uri.parse('${baseUrl}/client/payment_summary_view/$bookingId/').replace(queryParameters: queryParameters);
 
     final accessToken = await _storage.read(key: 'access_token');
     if (accessToken == null) {
@@ -2375,35 +2518,37 @@ class ApiService {
     }
   }
  ///-----------------------Get Chat Inbox method-----------------------///
-  Future<List<Map<String, dynamic>>> fetchChatInbox() async {
-    final token = await _storage.read(key: 'access_token');
-    if (token == null) {
-      AppLogger.error('No access token found for inbox');
-      throw Exception('Authentication required');
-    }
+ Future<List<Map<String, dynamic>>> fetchChatInbox({Map<String, String>? queryParams}) async {
+   final token = await _storage.read(key: 'access_token');
+   if (token == null) {
+     AppLogger.error('No access token found for inbox');
+     throw Exception('Authentication required');
+   }
 
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/chat/inbox/'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
+   try {
+     final uri = Uri.parse('$baseUrl/api/chat/inbox/').replace(queryParameters: queryParams);
+     final response = await http.get(
+       uri,
+       headers: {
+         'Authorization': 'Bearer $token',
+         'Content-Type': 'application/json',
+         'Cache-Control': 'no-cache', // Prevent caching
+       },
+     );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        AppLogger.debug('Inbox response: $data');
-        return data.cast<Map<String, dynamic>>();
-      } else {
-        AppLogger.error('Failed to fetch inbox: ${response.body}');
-        throw Exception('Failed to fetch inbox: ${response.statusCode}');
-      }
-    } catch (e) {
-      AppLogger.error('Error fetching inbox: $e');
-      throw Exception('Error fetching inbox: $e');
-    }
-  }
+     if (response.statusCode == 200) {
+       final List<dynamic> data = jsonDecode(response.body);
+       AppLogger.debug('Inbox response: $data');
+       return data.cast<Map<String, dynamic>>();
+     } else {
+       AppLogger.error('Failed to fetch inbox: ${response.body}');
+       throw Exception('Failed to fetch inbox: ${response.statusCode}');
+     }
+   } catch (e) {
+     AppLogger.error('Error fetching inbox: $e');
+     throw Exception('Error fetching inbox: $e');
+   }
+ }
   ///-----------------------Get Message History method-----------------------///
   Future<List<Map<String, dynamic>>> fetchMessageHistory(int chatRoomId, String token) async {
     try {
@@ -2620,6 +2765,1078 @@ class ApiService {
       throw ApiException('Failed to fetch navigation data: $e');
     }
   }
+///-----------------------Get Loyalty Rewards method-----------------------///
+  Future<Map<String, dynamic>> getLoyaltyRewards() async {
+    final uri = Uri.parse('$baseUrl/client/loyalty/rewards/');
+    final accessToken = await _storage.read(key: 'access_token');
+
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.i('API Request Get Loyalty Rewards: GET $uri');
+      _logger.i('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.i('Get Loyalty Rewards API Response Status: ${response.statusCode}');
+        _logger.i('Get Loyalty Rewards API Response Body: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final data = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.i('Loyalty rewards fetched: $data');
+          return data;
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Loyalty rewards not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch loyalty rewards: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch loyalty rewards: $e', 0);
+    }
+  }
+
+  ///-----------------------Add Favorite Therapist method-----------------------///
+  Future<Map<String, dynamic>> addFavoriteTherapist(int therapistId) async {
+    const String endpoint = '/client/love-therapists/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    final payload = {
+      'therapist': therapistId,
+    };
+
+    if (kDebugMode) {
+      _logger.d('API Request Add Favorite Therapist: POST $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+      _logger.d('Request Body: ${jsonEncode(payload)}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Add Favorite Therapist: ${response.statusCode}');
+        _logger.d('API Response Body Add Favorite Therapist: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.d('Therapist added to favorites successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Favorite therapist endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to add favorite therapist: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to add favorite therapist: $e', 0);
+    }
+  }
+
+  ///-----------------------Remove Favorite Therapist method-----------------------///
+  Future<void> removeFavoriteTherapist(int therapistId) async {
+    const String endpoint = '/client/love-therapists/update/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    final payload = {
+      'therapist_id': therapistId,
+    };
+
+    if (kDebugMode) {
+      _logger.d('API Request Remove Favorite Therapist: DELETE $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+      _logger.d('Request Body: ${jsonEncode(payload)}');
+    }
+
+    try {
+      final response = await _client.delete(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Remove Favorite Therapist: ${response.statusCode}');
+        _logger.d('API Response Body Remove Favorite Therapist: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 204:
+          _logger.d('Therapist removed from favorites successfully');
+          return;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Favorite therapist endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to remove favorite therapist: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to remove favorite therapist: $e', 0);
+    }
+  }
+  ///-----------------------Apply or Remove Loyalty Points-----------------------///
+  Future<Map<String, dynamic>> applyLoyaltyPoints(int bookingId, bool applyPoints) async {
+    const String endpoint = '/client/apply-loyalty-points/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    final payload = {
+      'booking_id': bookingId,
+      'apply_points': applyPoints,
+    };
+
+    if (kDebugMode) {
+      _logger.d('API Request Apply Loyalty Points: POST $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+      _logger.d('Request Body: ${jsonEncode(payload)}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Apply Loyalty Points: ${response.statusCode}');
+        _logger.d('API Response Body Apply Loyalty Points: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.d('Loyalty points applied/removed successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Loyalty points endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to apply loyalty points: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to apply loyalty points: $e', 0);
+    }
+  }
+
+  ///-----------------------Submit Medical Questionnaire-----------------------///
+  Future<void> submitMedicalQuestionnaire(int bookingId, Map<String, dynamic> payload) async {
+    final String endpoint = '/AI/bookings/$bookingId/symptom-check/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Submit Medical Questionnaire: POST $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+      _logger.d('Request Body: ${jsonEncode(payload)}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Submit Medical Questionnaire: ${response.statusCode}');
+        _logger.d('API Response Headers Submit Medical Questionnaire: ${response.headers}');
+        _logger.d('API Response Body Submit Medical Questionnaire: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          _logger.d('Medical questionnaire submitted successfully for booking $bookingId');
+          return;
+        case 400:
+          String errorMessage = 'Invalid questionnaire data.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            } else if (errorBody.containsKey('detail') && errorBody['detail'] is String) {
+              errorMessage = errorBody['detail'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Questionnaire endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to submit medical questionnaire: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to submit medical questionnaire: $e', 0);
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
+    }
+  }
+
+  ///-----------------------Initiate Payment method-----------------------///
+  Future<Map<String, dynamic>> initiatePayment(int bookingId) async {
+    final String endpoint = '/client/bookings/$bookingId/pay/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Initiate Payment: POST $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken", "Content-Type": "application/json"}');
+    }
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final responseBody = response.body;
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Initiate Payment: ${response.statusCode}');
+        _logger.d('API Response Headers Initiate Payment: ${response.headers}');
+        _logger.d('API Response Body Initiate Payment: $responseBody');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
+          _logger.d('Payment initiated successfully for booking $bookingId: $responseData');
+          return responseData; // Expected: {"session_url": "...", "payment_id": ...}
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(responseBody) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: $responseBody');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: $responseBody', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: $responseBody', response.statusCode);
+        case 404:
+          throw NotFoundException('Payment endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: $responseBody', response.statusCode);
+        default:
+          throw ApiException('Failed to initiate payment: $responseBody', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to initiate payment: $e', 0);
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
+    }
+  }
+  Future<List<Map<String, dynamic>>> getNotificationMessages(int roomId) async {
+    final String endpoint = '/api/notification/messages/$roomId/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Get Notification Messages: GET $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Get Notification Messages: ${response.statusCode}');
+        _logger.d('API Response Body Get Notification Messages: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          final notifications = List<Map<String, dynamic>>.from(responseData['notifications'] ?? []);
+          _logger.d('Notification messages fetched successfully: $notifications');
+          return notifications;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Notification messages endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch notification messages: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch notification messages: $e', 0);
+    }
+  }
+
+ Future<Map<String, dynamic>> setupTherapistProfile(
+     int userId, {
+       File? image,
+       String? fullName,
+       String? phone,
+       String? dateOfBirth,
+       int? profileId,
+     }) async {
+   final String endpoint = '/therapist/therapist/setup/$userId/';
+   final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+   final payload = <String, dynamic>{
+     if (fullName != null) 'full_name': fullName,
+     if (phone != null) 'phone': phone,
+     if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+     if (profileId != null) 'profile_id': profileId,
+   };
+
+   if (kDebugMode) {
+     _logger.d('API Request Setup Therapist Profile: PATCH $uri');
+     _logger.d('Request Headers: {"Content-Type": "multipart/form-data"}');
+     _logger.d('Request Body: ${jsonEncode(payload)}');
+     if (image != null) {
+       _logger.d('Image size: ${image.lengthSync()} bytes');
+     }
+   }
+
+   try {
+     http.MultipartRequest request = http.MultipartRequest('PATCH', uri)
+       ..headers.addAll({
+         'Content-Type': 'multipart/form-data',
+       })
+       ..fields.addAll({
+         for (var entry in payload.entries) entry.key: entry.value.toString(),
+       });
+
+     if (image != null) {
+       request.files.add(await http.MultipartFile.fromPath('image', image.path));
+     }
+
+     final streamedResponse = await request.send();
+     final response = await http.Response.fromStream(streamedResponse);
+
+     if (kDebugMode) {
+       _logger.d('API Response Status Setup Therapist Profile: ${response.statusCode}');
+       _logger.d('API Response Body Setup Therapist Profile: ${response.body}');
+     }
+
+     Map<String, dynamic>? responseData;
+     if (response.headers['content-type']?.contains('application/json') == true) {
+       try {
+         responseData = jsonDecode(response.body) as Map<String, dynamic>;
+       } catch (e) {
+         _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
+         throw ServerException('Invalid server response format', response.statusCode);
+       }
+     }
+
+     switch (response.statusCode) {
+       case 200:
+       case 201:
+         if (responseData == null) {
+           throw ServerException('Empty response body', response.statusCode);
+         }
+         _logger.d('Therapist profile setup successful: $responseData');
+         return responseData;
+       case 400:
+         String errorMessage = 'Invalid input data.';
+         if (responseData != null && responseData.containsKey('error')) {
+           errorMessage = responseData['error'];
+         }
+         throw BadRequestException(errorMessage, response.statusCode);
+       case 404:
+         throw NotFoundException('Profile setup endpoint not found: $uri', response.statusCode);
+       case 413:
+         throw BadRequestException('Image size too large. Please select a smaller image.', response.statusCode);
+       case 500:
+         throw ServerException('Server error: ${response.body}', response.statusCode);
+       default:
+         throw ApiException('Failed to setup therapist profile: ${response.body}', response.statusCode);
+     }
+   } on http.ClientException catch (e) {
+     _logger.e('Network Error: $e');
+     throw NetworkException('Check your network connection');
+   } catch (e) {
+     _logger.e('Unexpected Error: $e');
+     throw ApiException('Failed to setup therapist profile: $e', 0);
+   } finally {
+     if (kDebugMode) {
+       _logger.d('API Call Completed: $endpoint');
+     }
+   }
+ }
+  /// Verify Documents
+  Future<Map<String, dynamic>?> submitDocuments(Map<String, dynamic> payload) async {
+    final String endpoint = '/therapist/documents/';
+    final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+    if (kDebugMode) {
+      _logger.d('API Request Submit Documents: POST $uri');
+      _logger.d('Request Payload: ${jsonEncode(payload)}');
+    }
+
+    try {
+      var request = http.MultipartRequest('POST', uri);
+
+      // Add user_id field - ensure it's converted to String
+      request.fields['user_id'] = payload['user_id'].toString();
+
+      // Add each document as a file if present
+      const allFields = [
+        'id_document',
+        'ssn_or_ittn',
+        'drivers_license',
+        'liability_insurance',
+        'certifications',
+        'therapist_agreement',
+        'tax_form'
+      ];
+
+      for (var field in allFields) {
+        final fieldData = payload[field];
+        if (fieldData != null && fieldData is Map<String, dynamic>) {
+          final fileContent = fieldData['file'];
+          final fileName = fieldData['name'];
+
+          if (fileContent != null && fileName != null) {
+            try {
+              // Decode base64 back to bytes
+              final bytes = base64Decode(fileContent as String);
+              request.files.add(http.MultipartFile.fromBytes(
+                field,
+                bytes,
+                filename: fileName as String,
+              ));
+            } catch (e) {
+              _logger.e('Error processing file for field $field: $e');
+              throw BadRequestException('Invalid file data for $field', 400);
+            }
+          }
+        }
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Submit Documents: ${response.statusCode}');
+        _logger.d('API Response Body Submit Documents: ${response.body}');
+      }
+
+      Map<String, dynamic>? responseData;
+      if (response.headers['content-type']?.contains('application/json') == true) {
+        try {
+          responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          _logger.e('Failed to parse JSON response: $e\nRaw body: ${response.body}');
+          throw ServerException('Invalid server response format', response.statusCode);
+        }
+      }
+
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          if (responseData == null) {
+            throw ServerException('Empty response body', response.statusCode);
+          }
+          _logger.d('Documents submitted successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid input data.';
+          if (responseData != null && responseData.containsKey('error')) {
+            errorMessage = responseData['error'].toString();
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 404:
+          throw NotFoundException('Submit documents endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to submit documents: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to submit documents: $e', 0);
+    } finally {
+      if (kDebugMode) {
+        _logger.d('API Call Completed: $endpoint');
+      }
+    }
+  }
+  Future<Map<String, dynamic>> getTherapistReviews() async {
+    const String endpoint = '/therapist/reviews/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Get Therapist Reviews: GET $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Get Therapist Reviews: ${response.statusCode}');
+        _logger.d('API Response Body Get Therapist Reviews: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          _logger.d('Therapist reviews fetched successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Therapist reviews endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch therapist reviews: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch therapist reviews: $e', 0);
+    }
+  }
+  Future<Map<String, dynamic>> submitReviewResponse(int reviewId, String response) async {
+    final String endpoint = '/therapist/reviews/$reviewId/response/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Submit Review Response: PATCH $uri');
+      _logger.d('Request Body: {"response": "$response"}');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final httpResponse = await _client.patch(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'response': response}),
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Submit Review Response: ${httpResponse.statusCode}');
+        _logger.d('API Response Body Submit Review Response: ${httpResponse.body}');
+      }
+
+      switch (httpResponse.statusCode) {
+        case 200:
+          final responseData = jsonDecode(httpResponse.body) as Map<String, dynamic>;
+          _logger.d('Review response submitted successfully: $responseData');
+          return responseData;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(httpResponse.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${httpResponse.body}');
+          }
+          throw BadRequestException(errorMessage, httpResponse.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${httpResponse.body}', httpResponse.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${httpResponse.body}', httpResponse.statusCode);
+        case 404:
+          throw NotFoundException('Review response endpoint not found: $uri', httpResponse.statusCode);
+        case 500:
+          throw ServerException('Server error: ${httpResponse.body}', httpResponse.statusCode);
+        default:
+          throw ApiException('Failed to submit review response: ${httpResponse.body}', httpResponse.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to submit review response: $e', 0);
+    }
+  }
+  Future<List<Map<String, dynamic>>> getTherapistEarnings(String period) async {
+    const String endpoint = '/therapist/therapist_earnings/';
+    final Uri uri = Uri.parse('$baseUrl$endpoint?period=$period');
+
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken == null) {
+      _logger.e('No access token found');
+      throw UnauthorizedException('No access token found', 401);
+    }
+
+    if (kDebugMode) {
+      _logger.d('API Request Get Therapist Earnings: GET $uri');
+      _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+    }
+
+    try {
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (kDebugMode) {
+        _logger.d('API Response Status Get Therapist Earnings: ${response.statusCode}');
+        _logger.d('API Response Body Get Therapist Earnings: ${response.body}');
+      }
+
+      switch (response.statusCode) {
+        case 200:
+          final responseData = jsonDecode(response.body) as List<dynamic>;
+          final earningsList = responseData.map((item) => item as Map<String, dynamic>).toList();
+          _logger.d('Therapist earnings fetched successfully: $earningsList');
+          return earningsList;
+        case 400:
+          String errorMessage = 'Invalid request.';
+          try {
+            final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+            if (errorBody.containsKey('error') && errorBody['error'] is String) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+          }
+          throw BadRequestException(errorMessage, response.statusCode);
+        case 401:
+          throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+        case 403:
+          throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+        case 404:
+          throw NotFoundException('Therapist earnings endpoint not found: $uri', response.statusCode);
+        case 500:
+          throw ServerException('Server error: ${response.body}', response.statusCode);
+        default:
+          throw ApiException('Failed to fetch therapist earnings: ${response.body}', response.statusCode);
+      }
+    } on http.ClientException catch (e) {
+      _logger.e('Network Error: $e');
+      throw NetworkException('Check your network connection');
+    } catch (e) {
+      _logger.e('Unexpected Error: $e');
+      throw ApiException('Failed to fetch therapist earnings: $e', 0);
+    }
+  }
+  Future<List<Map<String, dynamic>>> getDisputeSettings() async {
+   const String endpoint = '/dispute/dispute-settings/';
+   final Uri uri = Uri.parse('$_baseUrl$endpoint');
+
+   if (kDebugMode) {
+     _logger.d('API Request Get Dispute Settings: GET $uri');
+   }
+
+   try {
+     final response = await _authenticatedRequest(method: 'GET', uri: uri);
+
+     if (kDebugMode) {
+       _logger.d('API Response Status Get Dispute Settings: ${response['statusCode']}');
+       _logger.d('API Response Body Get Dispute Settings: ${response['body']}');
+     }
+
+     switch (response['statusCode']) {
+       case 200:
+         final responseData = jsonDecode(response['body']) as List<dynamic>;
+         final disputeSettings = responseData.map((item) => item as Map<String, dynamic>).toList();
+         _logger.d('Dispute settings fetched successfully: $disputeSettings');
+         return disputeSettings;
+       case 400:
+         String errorMessage = 'Invalid request.';
+         try {
+           final errorBody = jsonDecode(response['body']) as Map<String, dynamic>;
+           if (errorBody.containsKey('error') && errorBody['error'] is String) {
+             errorMessage = errorBody['error'];
+           }
+         } catch (e) {
+           _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response['body']}');
+         }
+         throw BadRequestException(errorMessage, response['statusCode']);
+       case 401:
+         throw UnauthorizedException('Authentication failed: ${response['body']}', response['statusCode']);
+       case 403:
+         throw ForbiddenException('Access denied: ${response['body']}', response['statusCode']);
+       case 404:
+         throw NotFoundException('Dispute settings endpoint not found: $uri', response['statusCode']);
+       case 500:
+         throw ServerException('Server error: ${response['body']}', response['statusCode']);
+       default:
+         throw ApiException('Failed to fetch dispute settings: ${response['body']}', response['statusCode']);
+     }
+   } on http.ClientException catch (e) {
+     _logger.e('Network Error: $e');
+     throw NetworkException('Check your network connection');
+   } catch (e) {
+     _logger.e('Unexpected Error: $e');
+     throw ApiException('Failed to fetch dispute settings: $e', 0);
+   }
+ }
+ Future<Map<String, dynamic>> postReview(Map<String, dynamic> data) async {
+   const String endpoint = '/client/client/reviews/';
+   final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+   final accessToken = await _storage.read(key: 'access_token');
+   if (accessToken == null) {
+     _logger.e('No access token found');
+     throw UnauthorizedException('No access token found', 401);
+   }
+
+   if (kDebugMode) {
+     _logger.d('API Request Post Review: POST $uri');
+     _logger.d('Request Body: $data');
+     _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+   }
+
+   try {
+     final response = await _client.post(
+       uri,
+       headers: {
+         'Authorization': 'Bearer $accessToken',
+         'Content-Type': 'application/json',
+       },
+       body: jsonEncode(data),
+     );
+
+     if (kDebugMode) {
+       _logger.d('API Response Status Post Review: ${response.statusCode}');
+       _logger.d('API Response Body Post Review: ${response.body}');
+     }
+
+     switch (response.statusCode) {
+       case 200:
+       case 201:
+         final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+         _logger.d('Review posted successfully: $responseData');
+         return responseData;
+       case 400:
+         String errorMessage = 'Invalid review data.';
+         try {
+           final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+           if (errorBody.containsKey('error') && errorBody['error'] is String) {
+             errorMessage = errorBody['error'];
+           }
+         } catch (e) {
+           _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+         }
+         throw BadRequestException(errorMessage, response.statusCode);
+       case 401:
+         throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+       case 403:
+         throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+       case 404:
+         throw NotFoundException('Review endpoint not found: $uri', response.statusCode);
+       case 500:
+         throw ServerException('Server error: ${response.body}', response.statusCode);
+       default:
+         throw ApiException('Failed to post review: ${response.body}', response.statusCode);
+     }
+   } on http.ClientException catch (e) {
+     _logger.e('Network Error: $e');
+     throw NetworkException('Check your network connection');
+   } catch (e) {
+     _logger.e('Unexpected Error: $e');
+     throw ApiException('Failed to post review: $e', 0);
+   }
+ }
+
+ // New method to post dispute
+ Future<Map<String, dynamic>> postDispute(Map<String, dynamic> data) async {
+   const String endpoint = '/dispute/disputes/create/';
+   final Uri uri = Uri.parse('$baseUrl$endpoint');
+
+   final accessToken = await _storage.read(key: 'access_token');
+   if (accessToken == null) {
+     _logger.e('No access token found');
+     throw UnauthorizedException('No access token found', 401);
+   }
+
+   if (kDebugMode) {
+     _logger.d('API Request Post Dispute: POST $uri');
+     _logger.d('Request Body: $data');
+     _logger.d('Request Headers: {"Authorization": "Bearer $accessToken"}');
+   }
+
+   try {
+     final response = await _client.post(
+       uri,
+       headers: {
+         'Authorization': 'Bearer $accessToken',
+         'Content-Type': 'application/json',
+       },
+       body: jsonEncode(data),
+     );
+
+     if (kDebugMode) {
+       _logger.d('API Response Status Post Dispute: ${response.statusCode}');
+       _logger.d('API Response Body Post Dispute: ${response.body}');
+     }
+
+     switch (response.statusCode) {
+       case 200:
+       case 201:
+         final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+         _logger.d('Dispute posted successfully: $responseData');
+         return responseData;
+       case 400:
+         String errorMessage = 'Invalid dispute data.';
+         try {
+           final errorBody = jsonDecode(response.body) as Map<String, dynamic>;
+           if (errorBody.containsKey('error') && errorBody['error'] is String) {
+             errorMessage = errorBody['error'];
+           }
+         } catch (e) {
+           _logger.e('Failed to parse 400 response body: $e\nRaw body: ${response.body}');
+         }
+         throw BadRequestException(errorMessage, response.statusCode);
+       case 401:
+         throw UnauthorizedException('Authentication failed: ${response.body}', response.statusCode);
+       case 403:
+         throw ForbiddenException('Access denied: ${response.body}', response.statusCode);
+       case 404:
+         throw NotFoundException('Dispute endpoint not found: $uri', response.statusCode);
+       case 500:
+         throw ServerException('Server error: ${response.body}', response.statusCode);
+       default:
+         throw ApiException('Failed to post dispute: ${response.body}', response.statusCode);
+     }
+   } on http.ClientException catch (e) {
+     _logger.e('Network Error: $e');
+     throw NetworkException('Check your network connection');
+   } catch (e) {
+     _logger.e('Unexpected Error: $e');
+     throw ApiException('Failed to post dispute: $e', 0);
+   }
+ }
+
 }
 
 class ApiException implements Exception {
@@ -2660,4 +3877,7 @@ class PendingApprovalException implements Exception {
 
   @override
   String toString() => 'PendingApprovalException: $message (Status: $statusCode)';
+}
+class TokenExpiredException extends ApiException {
+  TokenExpiredException(String message, int statusCode) : super(message, statusCode);
 }

@@ -22,7 +22,7 @@ Widget appointmentCard({
   return Padding(
     padding: const EdgeInsets.all(8.0),
     child: Container(
-      width: 0.8.sw,
+      width: 0.88.sw,
       margin: EdgeInsets.only(right: 12.w),
       padding: EdgeInsets.all(12.r),
       decoration: BoxDecoration(

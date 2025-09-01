@@ -28,6 +28,10 @@ class CategoryItem extends StatelessWidget {
             height: 0.12.sh,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20.r),
+              border: Border.all(
+                color: isSelected ? const Color(0xFFB28D28) : Colors.grey[300]!,
+                width: isSelected ? 2.w : 1.w,
+              ),
             ),
             child: Stack(
               alignment: Alignment.center,
@@ -40,7 +44,19 @@ class CategoryItem extends StatelessWidget {
                     width: 0.3.sw,
                     height: 0.12.sh,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                    placeholder: (context, url) => Container(
+                      width: 0.3.sw,
+                      height: 0.12.sh,
+                      color: Colors.grey[200],
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            const Color(0xFFB28D28), // Match app theme
+                          ),
+                          strokeWidth: 2.w,
+                        ),
+                      ),
+                    ),
                     errorWidget: (context, url, error) => Image.asset(
                       'assets/images/thi_massage.png',
                       width: 0.3.sw,
@@ -61,7 +77,7 @@ class CategoryItem extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20.r),
-                        color: const Color(0xFFB28D28).withOpacity(0.5),
+                        color: const Color(0xFFB28D28).withOpacity(0.6),
                       ),
                     ),
                   ),
@@ -91,9 +107,9 @@ class CategoryItem extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 fontSize: 14.sp,
-                fontWeight: FontWeight.w400,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 fontFamily: "Urbanist",
-                color: const Color(0xff666561),
+                color: isSelected ? const Color(0xFFB28D28) : const Color(0xff666561),
               ),
               textAlign: TextAlign.center,
             ),

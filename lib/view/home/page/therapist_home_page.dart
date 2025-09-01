@@ -3,7 +3,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:thi_massage/controller/auth_controller.dart';
 import '../../../api/api_service.dart';
+import '../../../api/auth_service.dart';
 import '../../../controller/location_controller.dart';
 import '../../../themes/colors.dart';
 import '../widgets/appointment_card.dart';
@@ -28,8 +30,10 @@ class _TherapistHomePageState extends State<TherapistHomePage>
   late Animation<double> _mainScreenScaleAnimation;
   bool _isDrawerOpen = false;
   double _dragStartX = 0;
-  final ApiService _apiService = ApiService();
-  final LocationController _locationController = Get.put(LocationController());
+  final ApiService _apiService = Get.find<ApiService>(); // Use Get.find
+  final AuthController authController = Get.find<AuthController>(); // Use Get.find
+  final AuthService _authService = Get.find<AuthService>(); // Initialize AuthService
+  final LocationController _locationController = Get.find<LocationController>(); // Use Get.find
   Map<String, dynamic>? _therapistProfile;
   bool _isLoading = true;
   String? _errorMessage;
@@ -79,6 +83,8 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         _isLoading = false;
       });
       AppLogger.debug('Therapist Profile: $profile');
+    } on TokenExpiredException {
+      _handleTokenExpiration('Failed to load profile');
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -111,6 +117,8 @@ class _TherapistHomePageState extends State<TherapistHomePage>
       });
       AppLogger.debug('Upcoming Appointments: $appointments');
       AppLogger.debug('Geocoded Addresses: $_geocodedAddresses');
+    } on TokenExpiredException {
+      _handleTokenExpiration('Failed to load appointments');
     } catch (e) {
       setState(() {
         _isAppointmentsLoading = false;
@@ -133,6 +141,8 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         _isAppointmentRequestsLoading = false;
       });
       AppLogger.debug('Appointment Requests: $requests');
+    } on TokenExpiredException {
+      _handleTokenExpiration('Failed to load appointment requests');
     } catch (e) {
       setState(() {
         _isAppointmentRequestsLoading = false;
@@ -159,6 +169,8 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         type: isOnline ? ToastificationType.success : ToastificationType.error,
       );
       AppLogger.debug('Therapist availability updated to: $isOnline');
+    } on TokenExpiredException {
+      _handleTokenExpiration('Failed to update availability');
     } catch (e) {
       setState(() {
         _isUpdatingAvailability = false;
@@ -169,6 +181,86 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         type: ToastificationType.error,
       );
       AppLogger.error('Failed to update availability: $e');
+    }
+  }
+
+  Future<void> _fetchLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationErrorMessage = permission == LocationPermission.denied
+              ? 'Location permission denied.'
+              : 'Location permission permanently denied. Please enable it in settings.';
+        });
+        return;
+      }
+
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationErrorMessage = 'Please turn on location services in your device settings.';
+        });
+        return;
+      }
+
+      // Fetch location directly with Geolocator
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final latitude = position.latitude;
+      final longitude = position.longitude;
+      final locationData = {'latitude': latitude, 'longitude': longitude};
+
+      // Update location name for display
+      await _locationController.fetchCurrentLocation();
+      if (_locationController.hasError.value) {
+        AppLogger.debug('LocationController has error, but proceeding with API call');
+      }
+
+      try {
+        await _apiService.updateLocation(locationData);
+        setState(() {
+          _therapistProfile?['latitude'] = latitude.toString();
+          _therapistProfile?['longitude'] = longitude.toString();
+          _locationErrorMessage = null;
+        });
+        AppLogger.debug('Profile updated with latitude: $latitude, longitude: $longitude');
+      } on TokenExpiredException {
+        _handleTokenExpiration('Failed to update location in profile');
+      } catch (e) {
+        setState(() {
+          _locationErrorMessage = 'Failed to update location in profile: $e';
+        });
+        CustomSnackBar.show(
+          context,
+          _locationErrorMessage!,
+          type: ToastificationType.error,
+        );
+        AppLogger.error('Failed to update profile location: $e');
+      }
+    } catch (e) {
+      AppLogger.error('Error fetching location: $e');
+      setState(() {
+        _locationErrorMessage = 'Failed to fetch location: $e';
+      });
+    }
+  }
+
+  void _handleTokenExpiration(String message) async {
+    AppLogger.warning('Token expired: $message');
+    CustomSnackBar.show(
+      context,
+      'Session expired. Please log in again.',
+      type: ToastificationType.error,
+    );
+    try {
+      await authController.logout();
+      Get.offAllNamed('/login');
+    } catch (e) {
+      AppLogger.error('Failed to logout: $e');
+      Get.offAllNamed('/login'); // Redirect even if logout fails
     }
   }
 
@@ -241,68 +333,6 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         ],
       ),
     );
-  }
-
-  Future<void> _fetchLocation() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        setState(() {
-          _locationErrorMessage = permission == LocationPermission.denied
-              ? 'Location permission denied.'
-              : 'Location permission permanently denied. Please enable it in settings.';
-        });
-        return;
-      }
-
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          _locationErrorMessage = 'Please turn on location services in your device settings.';
-        });
-        return;
-      }
-
-      // Fetch location directly with Geolocator
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      final latitude = position.latitude;
-      final longitude = position.longitude;
-      final locationData = {'latitude': latitude, 'longitude': longitude};
-
-      // Update location name for display
-      await _locationController.fetchCurrentLocation();
-      if (_locationController.hasError.value) {
-        AppLogger.debug('LocationController has error, but proceeding with API call');
-      }
-
-      try {
-        await _apiService.updateLocation(locationData);
-        setState(() {
-          _therapistProfile?['latitude'] = latitude.toString();
-          _therapistProfile?['longitude'] = longitude.toString();
-          _locationErrorMessage = null;
-        });
-        AppLogger.debug('Profile updated with latitude: $latitude, longitude: $longitude');
-      } catch (e) {
-        setState(() {
-          _locationErrorMessage = 'Failed to update location in profile: $e';
-        });
-        CustomSnackBar.show(
-          context,
-          _locationErrorMessage!,
-          type: ToastificationType.error,
-        );
-        AppLogger.error('Failed to update profile location: $e');
-      }
-    } catch (e) {
-      AppLogger.error('Error fetching location: $e');
-      setState(() {
-        _locationErrorMessage = 'Failed to fetch location: $e';
-      });
-    }
   }
 
   void toggleDrawer() {
@@ -420,9 +450,12 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                   const Spacer(),
                   GestureDetector(
                     onTap: () async {
-                      await _storage.delete(key: 'user_id');
-                      await _storage.delete(key: 'access_token');
-                      Get.offAllNamed('/login');
+                      try {
+                        await  authController.logout();
+
+                      } catch (e) {
+                        AppLogger.error('Failed to logout: $e');
+                      }
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
@@ -557,12 +590,15 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                                           children: [
                                             Row(
                                               children: [
-                                                Text(
-                                                  "Hello ${_therapistProfile?['full_name']?.split(' ')[0] ?? 'Therapist'}",
-                                                  style: TextStyle(
-                                                    fontSize: 30.sp,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: primaryTextColor,
+                                                SizedBox(
+                                                  width: 0.4.sw,
+                                                  child: Text(
+                                                    "Hello ${_therapistProfile?['full_name']?.split(' ')[0] ?? 'Therapist'}",
+                                                    style: TextStyle(
+                                                      fontSize: 30.sp,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: primaryTextColor,
+                                                    ),
                                                   ),
                                                 ),
                                                 SizedBox(width: 0.14.sw),
@@ -656,7 +692,10 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                                       ],
                                     ),
                                     SizedBox(height: 20.h),
-                                    _sectionHeader("Upcoming Appointments", onTap: () {}),
+                                    _sectionHeader("Upcoming Appointments", onTap: () {
+
+
+                                    }),
                                     SizedBox(
                                       height: 0.14.sh,
                                       child: _isAppointmentsLoading
@@ -710,15 +749,41 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                                               appointment['address']?.toString() ?? 'N/A';
                                           final geocodedAddress =
                                               _geocodedAddresses[rawAddress] ?? rawAddress;
-                                          return appointmentCard(
-                                            name: appointment['client_name'] ?? 'Unknown',
-                                            date: appointment['date'] ?? 'N/A',
-                                            time: appointment['time'] ?? 'N/A',
-                                            service: appointment['specility'] ?? 'N/A',
-                                            location: geocodedAddress,
-                                            distance: appointment['distance'].toString(),
-                                            isMale: appointment['client_gender'] == 'male',
-                                            clientImage: appointment['client_image'],
+                                          return GestureDetector(
+                                            onTap: () async {
+                                              try {
+                                                AppLogger.debug('Appointment: $appointment');
+                                                final bookingIdStr =
+                                                    appointment['Booking_id']?.toString() ?? '';
+                                                final bookingId = int.tryParse(bookingIdStr) ?? 0;
+                                                if (bookingId == 0) {
+                                                  throw Exception('Invalid booking ID: $bookingIdStr');
+                                                }
+                                                final bookingDetails = await _apiService
+                                                    .getBookingDetailsbByTherapist(bookingId);
+                                                Get.toNamed('/bookingInfoPage',
+                                                    arguments: bookingDetails);
+                                              } on TokenExpiredException {
+                                                _handleTokenExpiration(
+                                                    'Failed to load booking details');
+                                              } catch (e) {
+                                                CustomSnackBar.show(context,
+                                                    'Failed to load booking details: $e',
+                                                    type: ToastificationType.error);
+                                                AppLogger.error(
+                                                    'Failed to fetch booking details: $e');
+                                              }
+                                            },
+                                            child: appointmentCard(
+                                              name: appointment['client_name'] ?? 'Unknown',
+                                              date: appointment['date'] ?? 'N/A',
+                                              time: appointment['time'] ?? 'N/A',
+                                              service: appointment['specility'] ?? 'N/A',
+                                              location: geocodedAddress,
+                                              distance: appointment['distance'].toString(),
+                                              isMale: appointment['client_gender'] == 'male',
+                                              clientImage: appointment['client_image'],
+                                            ),
                                           );
                                         },
                                       ),
@@ -776,7 +841,7 @@ class _TherapistHomePageState extends State<TherapistHomePage>
                                         final request = _appointmentRequests[index];
                                         final dateParts = _parseDate(request['date'] ?? 'N/A');
                                         return _appointmentRequestCard(
-                                          index: index, // Pass the index parameter
+                                          index: index,
                                           name: request['client_name'] ?? 'Unknown',
                                           service: request['specility'] ?? 'N/A',
                                           day: dateParts['day']!,
@@ -824,18 +889,13 @@ class _TherapistHomePageState extends State<TherapistHomePage>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
-          if (onTap != null)
-            GestureDetector(
-              onTap: onTap,
-              child: Text("see all", style: TextStyle(fontSize: 14.sp, color: primaryTextColor)),
-            ),
         ],
       ),
     );
   }
 
   Widget _appointmentRequestCard({
-    required int index, // Add index parameter
+    required int index,
     required String name,
     required String service,
     required String day,
@@ -844,16 +904,16 @@ class _TherapistHomePageState extends State<TherapistHomePage>
     required String time,
     bool isFemale = false,
   }) {
-    final request = _appointmentRequests[index]; // Use the passed index
+    final request = _appointmentRequests[index];
     return GestureDetector(
       onTap: () {
         Get.toNamed('/appointmentRequestPage', arguments: {
-          'booking_id': request['Booking_id'], // Pass booking_id
+          'booking_id': request['Booking_id'],
           'client_name': request['client_name'] ?? 'Unknown',
           'client_image': request['client_image'],
           'client_gender': request['client_gender'] ?? 'male',
         });
-        AppLogger.debug('Navigating to appointmentRequestPage with booking_id: ${request['id']}');
+        AppLogger.debug('Navigating to appointmentRequestPage with booking_id: ${request['Booking_id']}');
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
@@ -981,15 +1041,16 @@ class _TherapistHomePageState extends State<TherapistHomePage>
       ),
     );
   }
+
   Widget _buildDrawerItem(IconData icon, String title, String route) {
     final isSelected = _selectedDrawerItem == title;
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedDrawerItem = title; // Update selected item
+          _selectedDrawerItem = title;
         });
-        toggleDrawer(); // Close drawer
-        Get.toNamed(route); // Navigate to the route
+        toggleDrawer();
+        Get.toNamed(route);
         AppLogger.debug('Navigating to $route');
       },
       child: Container(

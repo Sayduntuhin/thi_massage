@@ -229,7 +229,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: SecondaryAppBar(title: "Edit Profile", showBackButton: false),
+      appBar: SecondaryAppBar(title: "Edit Profile", showBackButton: false, showManuButton: false),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -404,7 +404,7 @@ class _TherapistEditPageState extends State<TherapistEditPage> {
             ),
           ),
           SizedBox(
-            width: 0.55.sw,
+            width: 0.52.sw,
             child: isEditable
                 ? TextField(
               controller: controller,

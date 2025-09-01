@@ -9,7 +9,6 @@ import 'package:thi_massage/view/auth/signup/page/sign_up.dart';
 import 'package:thi_massage/view/booking/pages/client_appointment_page.dart';
 import 'package:thi_massage/view/booking/pages/client_appointment_payment_page.dart';
 import 'package:thi_massage/view/booking/pages/client_cutomer_preferences_page.dart';
-import 'package:thi_massage/view/map/page/live_treaking_page.dart';
 import 'package:thi_massage/view/booking/pages/terms_and_conditions.dart';
 import 'package:thi_massage/view/booking/pages/therepist_appinment_request_page.dart';
 import 'package:thi_massage/view/booking/pages/appoinment_details_page.dart';
@@ -22,6 +21,7 @@ import 'package:thi_massage/view/home/page/home_page.dart';
 import 'package:thi_massage/view/home/page/notification_page.dart';
 import 'package:thi_massage/view/client_profile/pages/therapist_profile_view_by_client_page.dart';
 import 'package:thi_massage/view/home/widgets/search_page.dart';
+import 'package:thi_massage/view/map/page/live_treaking_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/add_card_page.dart';
 import 'package:thi_massage/view/profileSetup/pages/profile_setup.dart';
 import 'package:thi_massage/view/profileSetup/pages/review_submitted_page.dart';
@@ -34,9 +34,15 @@ import 'package:thi_massage/view/wallet/pages/new_payout_page.dart';
 import 'package:thi_massage/view/wallet/pages/payment_history_page.dart';
 import 'package:thi_massage/view/welcome/pages/welcome_page.dart';
 import 'package:thi_massage/view/auth/forgetPassword/change_password_page.dart';
+import '../view/booking/pages/ai_question_page.dart';
+import '../view/client_profile/pages/my_rewards.dart';
 import '../view/home/page/therapist_home_page.dart';
+import '../view/home/widgets/client_booking_info_page.dart';
 import '../view/therapist_profile/page/review_section_therapist.dart';
 import '../view/therapist_profile/page/treams_privacy.dart';
+import '../controller/user_type_controller.dart';
+import '../view/widgets/app_logger.dart';
+
 class Routes {
   static const String initial = "/";
   static const String logIn = "/logIn";
@@ -63,7 +69,7 @@ class Routes {
   static const String therapistPage = "/therapistPage";
   static const String customerPreferencesPage = "/customerPreferencesPage";
   static const String verifyDocumentsPage = "/verifyDocumentsPage";
-  static const String reviewSubmitPage = "/reviewSubmitPage";
+  static const String reviewSubmittedPage = "/reviewSubmittedPage"; // Fixed naming
   static const String newPayoutPage = "/newPayoutPage";
   static const String fundsWithdrawPage = "/fundsWithdrawPage";
   static const String paymentHistoryPage = "/paymentHistoryPage";
@@ -74,22 +80,42 @@ class Routes {
   static const String termsPrivacy = "/termsPrivacy";
   static const String reviewsRatings = "/reviewsRatings";
   static const String contactSupport = "/contactSupport";
+  static const String myRewards = "/myRewards";
+  static const String medicalQuestionnaireScreen = "/medicalQuestionnaireScreen";
+  static const String bookingInfoPage = "/bookingInfoPage";
 }
-class AppPages {
-  static const bool isTherapist = true;
 
-  // Custom middleware for authentication
+class AuthMiddleware extends GetMiddleware {
+  @override
+  int? get priority => 1;
+
+  @override
+  RouteSettings? redirect(String? route) {
+    final authController = Get.find<AuthController>();
+    final userTypeController = Get.find<UserTypeController>();
+    if (!authController.isLoggedIn.value) {
+      AppLogger.debug("AuthMiddleware: User not logged in, redirecting to ${Routes.logIn} with isTherapist=${userTypeController.isTherapist.value}");
+      return RouteSettings(
+        name: Routes.logIn,
+        arguments: {'isTherapist': userTypeController.isTherapist.value},
+      );
+    }
+    return null;
+  }
+}
+
+class AppPages {
   static final AuthMiddleware authMiddleware = AuthMiddleware();
 
   static final routes = [
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Welcome<<<<<<<<<<<<<<<<<<<
+    // Welcome
     GetPage(
       name: Routes.initial,
       page: () => WelcomePage(),
       transition: Transition.zoom,
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Auth<<<<<<<<<<<<<<<<<<<
+    // Auth
     GetPage(
       name: Routes.logIn,
       page: () => LoginPage(),
@@ -116,7 +142,7 @@ class AppPages {
       transition: Transition.rightToLeft,
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ProfileSetup<<<<<<<<<<<<<<<<<<<
+    // Profile Setup
     GetPage(
       name: Routes.profileSetup,
       page: () => ProfileSetupPage(),
@@ -130,7 +156,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
     GetPage(
-      name: Routes.reviewSubmitPage,
+      name: Routes.reviewSubmittedPage,
       page: () => ReviewSubmittedPage(),
       transition: Transition.size,
       middlewares: [authMiddleware],
@@ -142,7 +168,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ChatPage<<<<<<<<<<<<<<<<<<<
+    // Chat
     GetPage(
       name: Routes.chatDetailsPage,
       page: () => ChatDetailScreen(),
@@ -150,7 +176,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>HomePage<<<<<<<<<<<<<<<<<<<
+    // Home
     GetPage(
       name: Routes.homePage,
       page: () => HomeScreen(),
@@ -176,7 +202,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>BookingPage<<<<<<<<<<<<<<<<<<<
+    // Booking
     GetPage(
       name: Routes.appointmentPage,
       page: () => AppointmentScreen(),
@@ -220,7 +246,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Wallet<<<<<<<<<<<<<<<<<<<
+    // Wallet
     GetPage(
       name: Routes.fundsWithdrawPage,
       page: () => FundsWithdrawPage(selectedBank: Get.arguments['selectedBank']),
@@ -240,7 +266,7 @@ class AppPages {
       middlewares: [authMiddleware],
     ),
 
-    ///>>>>>>>>>>>>>>>>>>>>>>>>>>>>>ProfilePage<<<<<<<<<<<<<<<<<<<
+    // Profile
     GetPage(
       name: Routes.editProfile,
       page: () => EditProfilePage(),
@@ -307,18 +333,23 @@ class AppPages {
       transition: Transition.fadeIn,
       middlewares: [authMiddleware],
     ),
+    GetPage(
+      name: Routes.myRewards,
+      page: () => MyRewardsScreen(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.medicalQuestionnaireScreen,
+      page: () => MedicalQuestionnaireScreen(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
+    GetPage(
+      name: Routes.bookingInfoPage,
+      page: () => BookingInfoPage(),
+      transition: Transition.fadeIn,
+      middlewares: [authMiddleware],
+    ),
   ];
-}
-class AuthMiddleware extends GetMiddleware {
-  @override
-  int? get priority => 1;
-
-  @override
-  RouteSettings? redirect(String? route) {
-    final authController = Get.find<AuthController>();
-    if (!authController.isLoggedIn.value) {
-      return const RouteSettings(name: Routes.logIn);
-    }
-    return null;
-  }
 }

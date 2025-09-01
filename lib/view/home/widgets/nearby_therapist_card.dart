@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:get/get.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../themes/colors.dart';
 import '../../../api/api_service.dart';
 import '../../widgets/app_logger.dart';
@@ -222,15 +223,16 @@ class TherapistCarousel extends StatefulWidget {
 class _TherapistCarouselState extends State<TherapistCarousel> {
   late List<Map<String, dynamic>> _therapists;
   final ApiService _apiService = ApiService();
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   @override
   void initState() {
     super.initState();
-    // Initialize therapists with isFavorite flag
+    // Initialize therapists with isFavorite flag based on is_love
     _therapists = widget.therapists.map((therapist) {
       return {
         ...therapist,
-        'isFavorite': therapist['isFavorite'] ?? false,
+        'isFavorite': therapist['is_love'] ?? false,
       };
     }).toList();
     AppLogger.debug('TherapistCarousel initialized with ${_therapists.length} therapists: $_therapists');
@@ -275,6 +277,67 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
     }
   }
 
+  Future<int?> _getClientId() async {
+    final userIdStr = await _storage.read(key: 'user_id');
+    if (userIdStr == null) {
+      AppLogger.error('No user ID found in storage');
+      return null;
+    }
+    final clientId = int.tryParse(userIdStr);
+    if (clientId == null) {
+      AppLogger.error('Invalid user ID format: $userIdStr');
+      return null;
+    }
+    return clientId;
+  }
+
+  Future<void> _toggleFavorite(int index, int therapistId, String therapistName) async {
+    try {
+      final clientId = await _getClientId();
+      if (clientId == null) {
+        CustomSnackBar.show(
+          context,
+          'Please log in to manage favorites',
+          type: ToastificationType.error,
+        );
+        return;
+      }
+
+      final isCurrentlyFavorite = _therapists[index]['isFavorite'] as bool;
+
+      if (isCurrentlyFavorite) {
+        // Remove from favorites
+        await _apiService.removeFavoriteTherapist(therapistId);
+        setState(() {
+          _therapists[index]['isFavorite'] = false;
+        });
+        CustomSnackBar.show(
+          context,
+          '$therapistName removed from favorites',
+          type: ToastificationType.success,
+        );
+      } else {
+        // Add to favorites
+        await _apiService.addFavoriteTherapist(therapistId);
+        setState(() {
+          _therapists[index]['isFavorite'] = true;
+        });
+        CustomSnackBar.show(
+          context,
+          '$therapistName added to favorites',
+          type: ToastificationType.success,
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Error toggling favorite for $therapistName: $e');
+      CustomSnackBar.show(
+        context,
+        'Failed to update favorite status: $e',
+        type: ToastificationType.error,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_therapists.isEmpty) {
@@ -294,18 +357,20 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
           itemBuilder: (context, index, realIndex) {
             final therapist = _therapists[index];
             final imageUrl = _buildImageUrl(therapist['image_url'] as String? ?? '');
+            final therapistId = therapist['therapist_user_id'] as int?;
+            final therapistName = therapist['full_name'] as String? ?? 'Unknown';
+
             return TherapistCard(
               image: imageUrl,
-              name: therapist['full_name'] as String? ?? 'Unknown',
+              name: therapistName,
               rating: (therapist['average_rating'] as num?)?.toStringAsFixed(1) ?? '0.0',
               bookings: (therapist['total_completed_bookings'] as num?)?.toString() ?? '0',
               isFavorite: therapist['isFavorite'] as bool,
               onTap: () {
-                final therapistId = therapist['therapist_user_id'] as int?;
                 if (therapistId != null) {
-                  _navigateToTherapistProfile(context, therapistId, therapist['full_name'] as String? ?? 'Unknown');
+                  _navigateToTherapistProfile(context, therapistId, therapistName);
                 } else {
-                  AppLogger.error('Therapist ID is null for ${therapist['full_name']}');
+                  AppLogger.error('Therapist ID is null for $therapistName');
                   CustomSnackBar.show(
                     context,
                     'Therapist ID not found',
@@ -314,9 +379,16 @@ class _TherapistCarouselState extends State<TherapistCarousel> {
                 }
               },
               onFavoriteTap: () {
-                setState(() {
-                  _therapists[index]['isFavorite'] = !(_therapists[index]['isFavorite'] as bool);
-                });
+                if (therapistId != null) {
+                  _toggleFavorite(index, therapistId, therapistName);
+                } else {
+                  AppLogger.error('Therapist ID is null for $therapistName');
+                  CustomSnackBar.show(
+                    context,
+                    'Therapist ID not found',
+                    type: ToastificationType.error,
+                  );
+                }
               },
             );
           },

@@ -56,16 +56,6 @@ class InviteFriendPage extends StatelessWidget {
 
             SizedBox(height: 20.h),
 
-            // Divider with Text
-            _buildDividerWithText("Or Sign up with"),
-
-            SizedBox(height: 20.h),
-
-            // Phone Number Field
-            const PhoneNumberField(),
-
-            SizedBox(height: 60.h),
-
             // Send Invite Button
             CustomGradientButton(
               text: "Send Invite",

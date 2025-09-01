@@ -3,16 +3,16 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class CustomGradientButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool showIcon;
-  final bool isLoading; // New loading state
+  final bool isLoading;
 
   const CustomGradientButton({
     super.key,
     required this.text,
     required this.onPressed,
     this.showIcon = false,
-    this.isLoading = false, // Default to false
+    this.isLoading = false,
   });
 
   @override
@@ -32,45 +32,49 @@ class CustomGradientButton extends StatelessWidget {
         ),
       ),
       child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed, // Disable button when loading
+        onPressed: isLoading || onPressed == null ? null : onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30.r),
           ),
+          padding: EdgeInsets.zero,
         ),
-        child: isLoading
-            ? SizedBox(
-          width: 24.w,
-          height: 24.h,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.w,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-        )
-            : Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (showIcon)
-              Padding(
-                padding: EdgeInsets.only(right: 8.w, bottom: 2.h),
-                child: Image.asset(
-                  "assets/images/plus.png",
-                  width: 20.w,
+        child: Center(
+          child: isLoading
+              ? Container(
+            width: 30.w,
+            height: 30.h,
+            padding: EdgeInsets.all(4.w),
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5.w,
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF5E6CC)),
+            ),
+          )
+              : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (showIcon)
+                Padding(
+                  padding: EdgeInsets.only(right: 8.w, bottom: 2.h),
+                  child: Image.asset(
+                    "assets/images/plus.png",
+                    width: 20.w,
+                  ),
+                ),
+              Text(
+                text,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  fontFamily: 'Urbanist',
                 ),
               ),
-            Text(
-              text,
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                fontFamily: 'Urbanist',
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

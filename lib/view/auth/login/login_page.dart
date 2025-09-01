@@ -30,11 +30,11 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    // Check if user is already logged in
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (authController.isLoggedIn.value) {
-        Get.offAllNamed('/homePage',
-            arguments: {'isTherapist': Get.find<UserTypeController>().isTherapist.value});
+        final isTherapist = Get.find<UserTypeController>().isTherapist.value;
+        AppLogger.debug("LoginPage: Already logged in, navigating to homePage with isTherapist=$isTherapist");
+        Get.offAllNamed('/homePage', arguments: {'isTherapist': isTherapist});
       }
     });
   }
@@ -48,13 +48,11 @@ class _LoginPageState extends State<LoginPage> {
 
   bool validateInputs() {
     if (!GetUtils.isEmail(emailController.text.trim())) {
-      CustomSnackBar.show(context, "Please enter a valid email",
-          type: ToastificationType.error);
+      CustomSnackBar.show(context, "Please enter a valid email", type: ToastificationType.error);
       return false;
     }
     if (passwordController.text.trim().isEmpty) {
-      CustomSnackBar.show(context, "Please enter your password",
-          type: ToastificationType.error);
+      CustomSnackBar.show(context, "Please enter your password", type: ToastificationType.error);
       return false;
     }
     return true;
@@ -63,12 +61,16 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> handleLogin() async {
     if (!validateInputs()) return;
 
+    final isTherapist = Get.arguments?['isTherapist'] ?? false;
+    AppLogger.debug('Login: isTherapist argument = $isTherapist');
+
     LoadingManager.showLoading();
 
     try {
       final success = await authController.login(
         emailController.text.trim(),
         passwordController.text.trim(),
+        isTherapist: isTherapist,
       );
 
       LoadingManager.hideLoading();
@@ -78,10 +80,13 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       LoadingManager.hideLoading();
-
       String errorMessage = "Failed to login. Please try again.";
       if (e is PendingApprovalException) {
         errorMessage = e.message;
+        Get.toNamed('/reviewSubmitted');
+      } else if (e.toString().contains('role mismatch')) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+        Get.back(); // Return to WelcomePage to reselect role
       } else if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is UnauthorizedException) {
@@ -94,6 +99,7 @@ class _LoginPageState extends State<LoginPage> {
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
+
   Future<void> handleGoogleSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
     AppLogger.debug('Google Sign-In: isTherapist argument = $isTherapist');
@@ -109,30 +115,34 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       LoadingManager.hideLoading();
-
       String errorMessage = "Failed to sign in with Google. Please try again.";
       if (e is PendingApprovalException) {
         errorMessage = e.message;
+        Get.toNamed('/reviewSubmitted');
+      } else if (e.toString().contains('role mismatch')) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+        Get.back();
       } else if (e is PlatformException) {
-        AppLogger.error("Google Sign-In Error: ${e.code} - ${e.message}".toString());
-            if (e.code == 'sign_in_failed') {
+        AppLogger.error("Google Sign-In Error: ${e.code} - ${e.message}");
+        if (e.code == 'sign_in_failed') {
           errorMessage = "Google Sign-In failed. Please check your Google account.";
           if (e.message?.contains('ApiException: 10') == true) {
             errorMessage = "Configuration error: Verify OAuth client ID, SHA-1, and package name in Firebase Console.";
           }
         } else if (e.code == 'network_error') {
-        errorMessage = "Network error. Please check your internet connection.";
+          errorMessage = "Network error. Please check your internet connection.";
+        }
+      } else if (e is BadRequestException) {
+        errorMessage = e.message;
+      } else if (e is NetworkException) {
+        errorMessage = "No internet connection.";
+      } else {
+        AppLogger.error("Google Sign-In Unexpected Error: $e");
       }
-    } else if (e is BadRequestException) {
-    errorMessage = e.message;
-    } else if (e is NetworkException) {
-    errorMessage = "No internet connection.";
-    } else {
-    AppLogger.error("Google Sign-In Unexpected Error: $e");
+      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
-    CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
   }
-  }
+
   Future<void> handleFacebookSignIn() async {
     final isTherapist = Get.arguments?['isTherapist'] ?? false;
     AppLogger.debug('Facebook Sign-In: isTherapist argument = $isTherapist');
@@ -148,10 +158,13 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       LoadingManager.hideLoading();
-
       String errorMessage = "Failed to sign in with Facebook. Please try again.";
       if (e is PendingApprovalException) {
         errorMessage = e.message;
+        Get.toNamed('/reviewSubmitted');
+      } else if (e.toString().contains('role mismatch')) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+        Get.back();
       } else if (e is BadRequestException) {
         errorMessage = e.message;
       } else if (e is NetworkException) {
@@ -162,41 +175,6 @@ class _LoginPageState extends State<LoginPage> {
       CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
     }
   }
-  /*Future<void> handleAppleSignIn() async {
-    final isTherapist = Get.arguments?['isTherapist'] ?? false;
-    AppLogger.debug('Apple Sign-In: isTherapist argument = $isTherapist');
-
-    LoadingManager.showLoading();
-
-    try {
-      final success = await authController.appleSignIn(isTherapist: isTherapist);
-      LoadingManager.hideLoading();
-
-      if (success) {
-        CustomSnackBar.show(context, "Apple Sign-In successful!",
-            type: ToastificationType.success);
-      }
-    } catch (e) {
-      LoadingManager.hideLoading();
-
-      String errorMessage = "Failed to sign in with Apple. Please try again.";
-      if (e is SignInWithAppleAuthorizationException) {
-        AppLogger.error("Apple Sign-In Exception: Code=${e.code}, Message=${e.message}");
-        if (e.code == AuthorizationErrorCode.canceled) {
-          errorMessage = "Apple Sign-In canceled.";
-        } else if (e.code == AuthorizationErrorCode.failed) {
-          errorMessage = "Apple Sign-In failed. Please check your Apple ID.";
-        }
-      } else if (e is BadRequestException) {
-        errorMessage = e.message;
-      } else if (e is NetworkException) {
-        errorMessage = "No internet connection.";
-      } else {
-        AppLogger.error("Apple Sign-In Unexpected Error: $e");
-      }
-      CustomSnackBar.show(context, errorMessage, type: ToastificationType.error);
-    }
-  }*/
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +291,9 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   SizedBox(width: 20.w),
                   InkWell(
-                    //onTap: handleAppleSignIn,
+                    onTap: () {
+                      CustomSnackBar.show(context, "Apple Sign-In not implemented", type: ToastificationType.info);
+                    },
                     child: Image.asset('assets/images/apple.png', width: 50.w),
                   ),
                 ],
@@ -339,8 +319,7 @@ class _LoginPageState extends State<LoginPage> {
                       WidgetSpan(
                         child: GestureDetector(
                           onTap: () {
-                            Get.toNamed("/signUp",
-                                arguments: {'isTherapist': isTherapist});
+                            Get.toNamed("/signUp", arguments: {'isTherapist': isTherapist});
                           },
                           child: Text(
                             "Sign up",

@@ -4,7 +4,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:logger/logger.dart';
 import 'package:thi_massage/api/api_service.dart';
-import 'package:crypto/crypto.dart';
 import 'dart:math';
 
 class AuthService {
@@ -22,18 +21,16 @@ class AuthService {
 
   AuthService({ApiService? apiService}) : _apiService = apiService ?? ApiService();
 
-  /// Login with email and password
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await _apiService.login({
         "email": email,
         "password": password,
       });
-      _logger.d('AuthService: Login successful for $email');
-
-      // Store tokens and user role
+      _logger.d('AuthService: Login response: $response');
       await _storeAuthData(response);
-
+      await debugStoredData();
+      _logger.d('AuthService: Login successful for $email');
       return response;
     } catch (e) {
       if (e is PendingApprovalException) {
@@ -59,11 +56,9 @@ class AuthService {
         "auth_provider": authProvider,
       });
       _logger.d('AuthService: Social login response: $response');
-      _logger.d('AuthService: Social login successful for $email ($authProvider)');
-
-      // Store tokens and user role
       await _storeAuthData(response);
-
+      await debugStoredData();
+      _logger.d('AuthService: Social login successful for $email ($authProvider)');
       return response;
     } catch (e) {
       if (e is PendingApprovalException) {
@@ -75,28 +70,6 @@ class AuthService {
     }
   }
 
-  /// Helper to store auth data including role
-  Future<void> _storeAuthData(Map<String, dynamic> response) async {
-    if (response['access'] != null) {
-      await _storage.write(key: 'access_token', value: response['access']);
-    }
-
-    if (response['refresh'] != null) {
-      await _storage.write(key: 'refresh_token', value: response['refresh']);
-    }
-
-    if (response['profile_data'] != null && response['profile_data']['user'] != null) {
-      await _storage.write(key: 'user_id', value: response['profile_data']['user'].toString());
-
-      // Store the user role - this is the key addition
-      if (response['profile_data']['role'] != null) {
-        await _storage.write(key: 'user_role', value: response['profile_data']['role']);
-        _logger.d('AuthService: Stored user role: ${response['profile_data']['role']}');
-      }
-    }
-  }
-
-  /// Google Sign-In
   Future<Map<String, dynamic>> googleSignIn({required bool isTherapist}) async {
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn(
@@ -105,31 +78,26 @@ class AuthService {
         serverClientId: '1048463216573-68qmf5ml28m1f8uol09cstfno4jb33gk.apps.googleusercontent.com',
       );
 
-      // Sign out to ensure fresh login
       await googleSignIn.signOut();
       await FirebaseAuth.instance.signOut();
       _logger.d('AuthService: Cleared previous Google sessions');
 
-      // Sign in with Google
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         _logger.w('AuthService: Google Sign-In canceled by user');
         throw Exception('Google Sign-In canceled');
       }
 
-      // Get authentication details
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       if (googleAuth.idToken == null) {
         throw Exception('Google Sign-In: No ID token received');
       }
 
-      // Create Firebase credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase
       final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       final User? firebaseUser = userCredential.user;
 
@@ -139,7 +107,6 @@ class AuthService {
 
       _logger.d('AuthService: Google Firebase user: ${firebaseUser.email}');
 
-      // Call social login
       return await socialLogin(
         email: firebaseUser.email!,
         fullName: firebaseUser.displayName ?? 'Google User',
@@ -152,7 +119,6 @@ class AuthService {
     }
   }
 
-  /// Facebook Sign-In
   Future<Map<String, dynamic>> facebookSignIn({required bool isTherapist}) async {
     try {
       final LoginResult result = await FacebookAuth.instance.login(
@@ -204,7 +170,6 @@ class AuthService {
     }
   }
 
-  /// Sign up with email, password, and role
   Future<Map<String, dynamic>> signUp({
     required String email,
     required String password,
@@ -220,11 +185,10 @@ class AuthService {
         "phone_number": phoneNumber,
         "role": role,
       });
-      _logger.d('AuthService: Sign up successful for $email');
-
-      // Store tokens and user role
+      _logger.d('AuthService: Sign up response: $response');
       await _storeAuthData(response);
-
+      await debugStoredData();
+      _logger.d('AuthService: Sign up successful for $email');
       return response;
     } catch (e) {
       _logger.e('AuthService: Sign up failed: $e');
@@ -232,14 +196,12 @@ class AuthService {
     }
   }
 
-  /// Generate a random nonce for Apple Sign-In
   String _generateNonce([int length = 32]) {
     const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
     final random = Random();
     return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
   }
 
-  /// Check if session is valid
   Future<bool> isSessionValid() async {
     final accessToken = await _storage.read(key: 'access_token');
     if (accessToken == null) {
@@ -250,60 +212,173 @@ class AuthService {
     return true;
   }
 
-  /// Get stored user role
   Future<String> getUserRole() async {
     final role = await _storage.read(key: 'user_role');
-    _logger.d('AuthService: Retrieved user role: $role');
-    return role ?? 'client'; // Default to client if role not found
+    if (role == null) {
+      _logger.w('AuthService: No role in storage, attempting to fetch from API');
+      try {
+        final profile = await getUserProfile();
+        final fetchedRole = profile['role'];
+        if (fetchedRole != null) {
+          await _storage.write(key: 'user_role', value: fetchedRole);
+          _logger.d('AuthService: Fetched and stored role: $fetchedRole');
+          return fetchedRole;
+        }
+      } catch (e) {
+        _logger.e('AuthService: Failed to fetch role from API: $e');
+      }
+    }
+    return role ?? 'client';
   }
 
-  /// Logout
   Future<void> logout() async {
     try {
-      await _storage.delete(key: 'access_token');
-      await _storage.delete(key: 'refresh_token');
-      await _storage.delete(key: 'user_id');
-      await _storage.delete(key: 'user_role'); // Also clear role
+      await _storage.deleteAll(); // Clear all storage
       await FirebaseAuth.instance.signOut();
       await GoogleSignIn().signOut();
       await FacebookAuth.instance.logOut();
-      _logger.d('AuthService: Logout successful');
+      _logger.d('AuthService: Logout successful, all storage cleared');
     } catch (e) {
       _logger.e('AuthService: Logout failed: $e');
       rethrow;
     }
   }
 
-  /// Get stored user ID
   Future<String?> getUserId() async {
-    return await _storage.read(key: 'user_id');
+    final userId = await _storage.read(key: 'user_id');
+    _logger.d('AuthService: Retrieved user ID: $userId');
+    return userId;
   }
 
-  /// Get user profile
   Future<Map<String, dynamic>> getUserProfile() async {
     try {
-      final response = await _apiService.getClientProfile();
+      final role = await getUserRole();
+      Map<String, dynamic> response;
 
-      // Manually add role from storage if it exists but not in the response
-      if (!response.containsKey('role')) {
-        final storedRole = await getUserRole();
-        response['role'] = storedRole;
+      if (role == 'therapist') {
+        response = await _apiService.getTherapistOwnProfile();
+      } else {
+        response = await _apiService.getClientProfile();
       }
 
-      _logger.d('AuthService: Fetched user profile with role: ${response['role']}');
+      if (!response.containsKey('role')) {
+        response['role'] = role;
+      }
+
+      _logger.d('AuthService: Fetched user profile: $response');
       return response;
     } catch (e) {
       _logger.e('AuthService: Failed to fetch user profile: $e');
-
-      // If API fails, try to return at least the stored role
-      try {
-        final role = await getUserRole();
-        _logger.d('AuthService: Returning fallback role from storage: $role');
-        return {'role': role};
-      } catch (innerException) {
-        _logger.e('AuthService: Failed to get role from storage: $innerException');
-        rethrow;
-      }
+      final role = await _storage.read(key: 'user_role');
+      return {'role': role ?? 'client'};
     }
+  }
+
+  Future<void> _storeAuthData(Map<String, dynamic> response) async {
+    try {
+      if (response['access'] != null) {
+        await _storage.write(key: 'access_token', value: response['access']);
+        _logger.d('AuthService: Stored access token');
+      } else {
+        _logger.w('AuthService: No access token in response: ${response.keys.toList()}');
+      }
+
+      if (response['refresh'] != null) {
+        await _storage.write(key: 'refresh_token', value: response['refresh']);
+        _logger.d('AuthService: Stored refresh token');
+      }
+
+      String? userRole;
+      String? userId;
+
+      if (response['user_profile'] != null) {
+        final userProfile = response['user_profile'];
+        if (userProfile['user'] != null) {
+          userId = userProfile['user'].toString();
+        } else if (userProfile['id'] != null) {
+          userId = userProfile['id'].toString();
+        } else if (userProfile['user_id'] != null) {
+          userId = userProfile['user_id'].toString();
+        }
+
+        if (userProfile['role'] != null) {
+          userRole = userProfile['role'];
+        } else if (userProfile['user_role'] != null) {
+          userRole = userProfile['user_role'];
+        } else if (userProfile['user_type'] != null) {
+          userRole = userProfile['user_type'];
+        }
+      } else if (response['profile_data'] != null) {
+        final profileData = response['profile_data'];
+        if (profileData['user'] != null) {
+          userId = profileData['user'].toString();
+        } else if (profileData['id'] != null) {
+          userId = profileData['id'].toString();
+        } else if (profileData['user_id'] != null) {
+          userId = profileData['user_id'].toString();
+        }
+
+        if (profileData['role'] != null) {
+          userRole = profileData['role'];
+        } else if (profileData['user_role'] != null) {
+          userRole = profileData['user_role'];
+        } else if (profileData['user_type'] != null) {
+          userRole = profileData['user_type'];
+        }
+      } else {
+        if (response['user'] != null) {
+          userId = response['user'].toString();
+        } else if (response['id'] != null) {
+          userId = response['id'].toString();
+        } else if (response['user_id'] != null) {
+          userId = response['user_id'].toString();
+        }
+
+        if (response['role'] != null) {
+          userRole = response['role'];
+        } else if (response['user_role'] != null) {
+          userRole = response['user_role'];
+        } else if (response['user_type'] != null) {
+          userRole = response['user_type'];
+        }
+      }
+
+      if (userId != null) {
+        await _storage.write(key: 'user_id', value: userId);
+        _logger.d('AuthService: Stored user ID: $userId');
+      } else {
+        _logger.w('AuthService: No user ID found in response: ${response.keys.toList()}');
+      }
+
+      if (userRole != null) {
+        await _storage.write(key: 'user_role', value: userRole);
+        _logger.d('AuthService: Stored user role: $userRole');
+      } else {
+        _logger.w('AuthService: No user role found in response: ${response.keys.toList()}');
+        if (response['user_profile'] != null) {
+          _logger.w('AuthService: user_profile keys: ${response['user_profile'].keys.toList()}');
+        }
+        if (response['profile_data'] != null) {
+          _logger.w('AuthService: profile_data keys: ${response['profile_data'].keys.toList()}');
+        }
+      }
+    } catch (e) {
+      _logger.e('AuthService: Error storing auth data: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> debugStoredData() async {
+    final accessToken = await _storage.read(key: 'access_token');
+    final refreshToken = await _storage.read(key: 'refresh_token');
+    final userId = await _storage.read(key: 'user_id');
+    final userRole = await _storage.read(key: 'user_role');
+
+    _logger.d('=== STORED AUTH DATA DEBUG ===');
+    _logger.d('Access Token: ${accessToken != null ? 'Present' : 'Missing'}');
+    _logger.d('Refresh Token: ${refreshToken != null ? 'Present' : 'Missing'}');
+    _logger.d('User ID: $userId');
+    _logger.d('User Role: $userRole');
+    _logger.d('===============================');
   }
 }

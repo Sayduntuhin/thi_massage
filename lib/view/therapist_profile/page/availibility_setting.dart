@@ -3,11 +3,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
+import 'package:toastification/toastification.dart';
 import '../../../api/api_service.dart';
+import '../../../controller/auth_controller.dart';
 import '../../../themes/colors.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/app_logger.dart';
+import '../../widgets/custom_snackBar.dart';
 
 class AvailabilitySettingsPage extends StatefulWidget {
   const AvailabilitySettingsPage({super.key});
@@ -23,6 +26,7 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
   TimeOfDay startTime = TimeOfDay(hour: 9, minute: 0);
   TimeOfDay endTime = TimeOfDay(hour: 17, minute: 0);
   bool isEditing = false;
+  final AuthController authController = Get.find<AuthController>();
   late AnimationController _animationController;
   late Animation<double> _mainScreenSlideAnimation;
   late Animation<double> _mainScreenScaleAnimation;
@@ -43,7 +47,7 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
     // Set selectedFilter to current day
     final now = DateTime.now();
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    selectedFilter = days[now.weekday - 1]; // Today is Saturday, May 17, 2025
+    selectedFilter = days[now.weekday - 1]; // Today is Monday, June 23, 2025
     _selectedDrawerItem = "Availability Settings";
 
     // Initialize animation controller
@@ -97,11 +101,24 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
       });
       AppLogger.debug('Working Hours: $data');
     } catch (e) {
-      setState(() {
-        _isLoadingWorkingHours = false;
-        _workingHoursErrorMessage = 'Failed to load working hours: $e';
-      });
-      AppLogger.error('Failed to fetch working hours: $e');
+      if (e.toString().contains('404') || (e is ApiException && e.statusCode == 404)) {
+        // Handle 404 as a new therapist with no working hours
+        setState(() {
+          _isLoadingWorkingHours = false;
+          // Default to unavailable for new therapists
+          isAvailable = false;
+          startTime = TimeOfDay(hour: 9, minute: 0);
+          endTime = TimeOfDay(hour: 17, minute: 0);
+          _workingHoursErrorMessage = null; // Clear error to allow UI to proceed
+        });
+        AppLogger.debug('No working hours found for new therapist, using defaults');
+      } else {
+        setState(() {
+          _isLoadingWorkingHours = false;
+          _workingHoursErrorMessage = 'Failed to load working hours: $e';
+        });
+        AppLogger.error('Failed to fetch working hours: $e');
+      }
     }
   }
 
@@ -159,21 +176,9 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
         if (!isAvailable) '${dayLower}_end': '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00',
       };
       await _apiService.updateWorkingHours(data);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Availability settings saved!'),
-          backgroundColor: primaryButtonColor,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      CustomSnackBar.show(context, 'Availability settings saved!', type: ToastificationType.success);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save settings: $e'),
-          backgroundColor: Colors.redAccent,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      CustomSnackBar.show(context, 'Failed to save settings: $e', type: ToastificationType.error);
     }
   }
 
@@ -279,7 +284,7 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
                     style: TextStyle(fontSize: 13.sp, color: Colors.white70),
                   ),
                   SizedBox(height: 30.h),
-                  _buildDrawerItem(Icons.home, "Home", "/therapistHomePage"), // Added Home option
+                  _buildDrawerItem(Icons.home, "Home", "/therapistHomePage"),
                   _buildDrawerItem(Icons.calendar_today, "Availability Settings", "/availabilitySettings"),
                   _buildDrawerItem(Icons.settings, "App Settings", "/appSettings"),
                   _buildDrawerItem(Icons.privacy_tip, "Terms & Privacy Policy", "/termsPrivacy"),
@@ -288,9 +293,12 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
                   const Spacer(),
                   GestureDetector(
                     onTap: () async {
-                      await _storage.delete(key: 'user_id');
-                      await _storage.delete(key: 'access_token');
-                      Get.offAllNamed('/login');
+                      try {
+                        await  authController.logout();
+
+                      } catch (e) {
+                        AppLogger.error('Failed to logout: $e');
+                      }
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
@@ -368,6 +376,7 @@ class _AvailabilitySettingsPageState extends State<AvailabilitySettingsPage>
                           children: [
                             SecondaryAppBar(
                               title: "Availability Settings",
+                              showManuButton:  true,
                               showBackButton: false,
                               onMenuPressed: toggleDrawer,
                             ),

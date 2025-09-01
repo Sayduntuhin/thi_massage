@@ -9,6 +9,7 @@ import '../../widgets/app_logger.dart';
 import '../../widgets/custom_snackbar.dart';
 import 'package:toastification/toastification.dart';
 import '../../../themes/colors.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class CalendarPage extends StatefulWidget {
@@ -37,6 +38,23 @@ class _CalendarPageState extends State<CalendarPage> {
     _selectedDay = _focusedDay;
     _fetchAppointmentRequests();
     _fetchBookingsForDay(_focusedDay);
+  }
+
+  Future<String> _getAddressFromCoordinates(double lat, double lon) async {
+    try {
+      final url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=18&addressdetails=1';
+      final response = await http.get(Uri.parse(url), headers: {'User-Agent': 'ThaiMassageApp/1.0'});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final address = data['display_name'] ?? 'Unknown Location';
+        return address;
+      } else {
+        return 'Unknown Location';
+      }
+    } catch (e) {
+      AppLogger.error('Failed to fetch address: $e');
+      return 'Unknown Location';
+    }
   }
 
   Future<void> _fetchAppointmentRequests() async {
@@ -70,24 +88,39 @@ class _CalendarPageState extends State<CalendarPage> {
     try {
       final formattedDate = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
       final bookings = await _apiService.getBookingsByDate(formattedDate);
+      final List<Map<String, dynamic>> processedBookings = [];
+
+      for (var booking in bookings) {
+        String address = 'Unknown Location';
+        try {
+          final coords = booking['location'].split(',').map((s) => s.trim()).toList();
+          if (coords.length == 2) {
+            final lat = double.parse(coords[0]);
+            final lon = double.parse(coords[1]);
+            address = await _getAddressFromCoordinates(lat, lon);
+          }
+        } catch (e) {
+          AppLogger.error('Failed to parse coordinates: ${booking['location']}, error: $e');
+        }
+
+        processedBookings.add({
+          'booking_id': booking['booking_id'], // ✅ Preserve booking_id
+          'name': booking['client_name'],
+          'status': booking['status'] == 'Accepted' ? 'Scheduled' : booking['status'],
+          'service': booking['service'],
+          'time': booking['time'],
+          'distance': booking['distance'].toString() + ' km',
+          'location': address,
+          'image': booking['client_image'].startsWith('/')
+              ? '$_baseUrl/therapist${booking['client_image']}'
+              : booking['client_image'],
+        });
+      }
+
       setState(() {
-        _bookings = bookings.map((booking) {
-          return {
-            'name': booking['client_name'],
-            'status': booking['status'] == 'Accepted' ? 'Scheduled' : booking['status'],
-            'service': booking['service'],
-            'time': booking['time'],
-            'distance': booking['distance'].toString() + ' km',
-            'location': booking['address'],
-            'image': booking['client_image'].startsWith('/')
-                ? '$_baseUrl/therapist${booking['client_image']}'
-                : booking['client_image'],
-          };
-        }).toList();
+        _bookings = processedBookings;
         _isBookingsLoading = false;
       });
-      AppLogger.debug('Bookings for $formattedDate:j');
-
       AppLogger.debug('Bookings for $formattedDate: $_bookings');
     } catch (e) {
       setState(() {
@@ -138,89 +171,90 @@ class _CalendarPageState extends State<CalendarPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: SecondaryAppBar(title: _showCalendar ? "Calendar" : "Requests", showBackButton: false),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Toggle Button
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-            child: Container(
-              height: 40.h,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20.r),
-                border: Border.all(color: const Color(0xFFB28D28)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(3.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _showCalendar = false;
-                          });
-                        },
-                        child: Container(
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: !_showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20.r),
-                          ),
-                          child: Text(
-                            "Requests",
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w500,
-                              color: !_showCalendar ? Colors.white : const Color(0xFFB28D28),
+      body: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Toggle Button
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+              child: Container(
+                height: 40.h,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                  border: Border.all(color: const Color(0xFFB28D28)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(3.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showCalendar = false;
+                            });
+                          },
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: !_showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(20.r),
+                            ),
+                            child: Text(
+                              "Requests",
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w500,
+                                color: !_showCalendar ? Colors.white : const Color(0xFFB28D28),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _showCalendar = true;
-                          });
-                        },
-                        child: Container(
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20.r),
-                          ),
-                          child: Text(
-                            "Calendar",
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w500,
-                              color: _showCalendar ? Colors.white : const Color(0xFFB28D28),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showCalendar = true;
+                            });
+                          },
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _showCalendar ? const Color(0xFFB28D28) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(20.r),
+                            ),
+                            child: Text(
+                              "Calendar",
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w500,
+                                color: _showCalendar ? Colors.white : const Color(0xFFB28D28),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // Main Content - Either Calendar or Requests
-          Expanded(
-            child: _showCalendar ? _buildCalendarView() : _buildRequestsView(),
-          ),
-        ],
+            // Main Content - Either Calendar or Requests
+            _showCalendar ? _buildCalendarView() : _buildRequestsView(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildCalendarView() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -229,113 +263,142 @@ class _CalendarPageState extends State<CalendarPage> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14.r),
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r, offset: Offset(0, 5))],
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 3.r, offset: Offset(0, 2))],
             ),
-            child: Column(
-              children: [
-                TableCalendar(
-                  firstDay: DateTime.utc(2024, 1, 1),
-                  lastDay: DateTime.utc(2026, 12, 31),
-                  focusedDay: _focusedDay,
-                  calendarFormat: CalendarFormat.month,
-                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                    _fetchBookingsForDay(selectedDay);
-                  },
-                  calendarStyle: CalendarStyle(
-                    todayDecoration: BoxDecoration(
-                      color: primaryTextColor,
-                      shape: BoxShape.circle,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: const Color(0xffE9C984),
-                      shape: BoxShape.circle,
-                    ),
-                    markerDecoration: BoxDecoration(
-                      color: Colors.grey,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  headerStyle: HeaderStyle(
-                    formatButtonVisible: false,
-                    titleCentered: true,
-                    leftChevronIcon: _arrowContainer(Icons.chevron_left),
-                    rightChevronIcon: _arrowContainer(Icons.chevron_right),
-                  ),
+            child: TableCalendar(
+              firstDay: DateTime.utc(2024, 1, 1),
+              lastDay: DateTime.utc(2026, 12, 31),
+              focusedDay: _focusedDay,
+              calendarFormat: CalendarFormat.month,
+              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+                _fetchBookingsForDay(selectedDay);
+              },
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: primaryTextColor.withOpacity(0.7),
+                  shape: BoxShape.circle,
                 ),
-                SizedBox(height: 20.h),
-                _legend(),
-                SizedBox(height: 20.h),
-              ],
+                selectedDecoration: BoxDecoration(
+                  color: const Color(0xffE9C984),
+                  shape: BoxShape.circle,
+                ),
+                markerDecoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+                outsideDaysVisible: false,
+                weekendTextStyle: TextStyle(fontSize: 14.sp, color: Colors.black87),
+                defaultTextStyle: TextStyle(fontSize: 14.sp, color: Colors.black87),
+              ),
+              headerStyle: HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+                titleTextStyle: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                leftChevronIcon: _arrowContainer(Icons.chevron_left),
+                rightChevronIcon: _arrowContainer(Icons.chevron_right),
+              ),
+              daysOfWeekStyle: DaysOfWeekStyle(
+                weekdayStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
+                weekendStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
+              ),
             ),
           ),
-
-          SizedBox(height: 20.h),
+          SizedBox(height: 10.h),
+          _legend(),
+          SizedBox(height: 15.h),
 
           // Date heading
           if (_selectedDay != null)
-            Text(
-              '${_selectedDay!.weekday == 4 ? 'Thu' : 'Other'}, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: primaryTextColor),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              child: Text(
+                '${_getWeekdayName(_selectedDay!.weekday)}, ${_selectedDay!.day} ${_monthName(_selectedDay!.month)}, ${_selectedDay!.year}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16.sp,
+                  color: primaryTextColor,
+                ),
+              ),
             ),
-
           SizedBox(height: 10.h),
 
           // Bookings list
-          Expanded(
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14.r),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 3.r, offset: Offset(0, 1))],
+            ),
             child: _isBookingsLoading
                 ? ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
               itemCount: 2,
               itemBuilder: (context, index) => const AppointmentCardShimmer(),
             )
                 : _bookingsErrorMessage != null
-                ? Center(
-              child: Column(
-                children: [
-                  Text(
-                    _bookingsErrorMessage!,
-                    style: TextStyle(fontSize: 14.sp, color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 10.h),
-                  ElevatedButton.icon(
-                    onPressed: () => _fetchBookingsForDay(_selectedDay ?? DateTime.now()),
-                    icon: const Icon(Icons.refresh),
-                    label: Text(
-                      'Retry',
-                      style: TextStyle(fontSize: 14.sp),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.r),
+                ? Padding(
+              padding: EdgeInsets.symmetric(vertical: 20.h),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                      child: Text(
+                        _bookingsErrorMessage!,
+                        style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 10.h),
+                    ElevatedButton.icon(
+                      onPressed: () => _fetchBookingsForDay(_selectedDay ?? DateTime.now()),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(
+                        'Retry',
+                        style: TextStyle(fontSize: 14.sp),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        backgroundColor: const Color(0xFFB28D28),
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
                 : _bookings.isEmpty
-                ? Center(
-              child: Text(
-                'No bookings for this date',
-                style: TextStyle(fontSize: 14.sp, color: Colors.grey),
-                textAlign: TextAlign.center,
+                ? Padding(
+              padding: EdgeInsets.symmetric(vertical: 20.h),
+              child: Center(
+                child: Text(
+                  'No bookings for this date',
+                  style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+                  textAlign: TextAlign.center,
+                ),
               ),
             )
                 : ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
               itemCount: _bookings.length,
               itemBuilder: (context, index) {
                 return _appointmentCard(_bookings[index]);
               },
             ),
-          )
+          ),
         ],
       ),
     );
@@ -343,27 +406,28 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Widget _buildRequestsView() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: 10.h),
           Text(
             'Pending Requests',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp, color: primaryTextColor),
           ),
           SizedBox(height: 10.h),
-          Expanded(
-            child: _isAppointmentRequestsLoading
-                ? ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: 2,
-              itemBuilder: (context, index) => const AppointmentRequestCardShimmer(),
-            )
-                : _appointmentRequestsErrorMessage != null
-                ? Center(
+          _isAppointmentRequestsLoading
+              ? ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 2,
+            itemBuilder: (context, index) => const AppointmentRequestCardShimmer(),
+          )
+              : _appointmentRequestsErrorMessage != null
+              ? Padding(
+            padding: EdgeInsets.symmetric(vertical: 20.h),
+            child: Center(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     _appointmentRequestsErrorMessage!,
@@ -373,7 +437,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   SizedBox(height: 10.h),
                   ElevatedButton.icon(
                     onPressed: _fetchAppointmentRequests,
-                    icon: const Icon(Icons.refresh),
+                    icon: const Icon(Icons.refresh, size: 18),
                     label: Text(
                       'Retry',
                       style: TextStyle(fontSize: 14.sp),
@@ -383,40 +447,52 @@ class _CalendarPageState extends State<CalendarPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10.r),
                       ),
+                      backgroundColor: const Color(0xFFB28D28),
+                      foregroundColor: Colors.white,
                     ),
                   ),
                 ],
               ),
-            )
-                : _appointmentRequests.isEmpty
-                ? Center(
+            ),
+          )
+              : _appointmentRequests.isEmpty
+              ? Padding(
+            padding: EdgeInsets.symmetric(vertical: 20.h),
+            child: Center(
               child: Text(
                 'No appointment requests',
-                style: TextStyle(fontSize: 14.sp, color: Colors.grey),
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
                 textAlign: TextAlign.center,
               ),
-            )
-                : ListView.builder(
-              itemCount: _appointmentRequests.length,
-              itemBuilder: (context, index) {
-                final request = _appointmentRequests[index];
-                final dateParts = _parseDate(request['date'] ?? 'N/A');
-                return _appointmentRequestCard(
-                  index: index,
-                  name: request['client_name'] ?? 'Unknown',
-                  service: request['specility'] ?? 'N/A',
-                  day: dateParts['day']!,
-                  month: dateParts['month']!,
-                  year: dateParts['year']!,
-                  time: request['time'] ?? 'N/A',
-                  isFemale: request['client_gender'] != 'male',
-                );
-              },
             ),
+          )
+              : ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _appointmentRequests.length,
+            itemBuilder: (context, index) {
+              final request = _appointmentRequests[index];
+              final dateParts = _parseDate(request['date'] ?? 'N/A');
+              return _appointmentRequestCard(
+                index: index,
+                name: request['client_name'] ?? 'Unknown',
+                service: request['specility'] ?? 'N/A',
+                day: dateParts['day']!,
+                month: dateParts['month']!,
+                year: dateParts['year']!,
+                time: request['time'] ?? 'N/A',
+                isFemale: request['client_gender'] != 'male',
+              );
+            },
           ),
         ],
       ),
     );
+  }
+
+  String _getWeekdayName(int weekday) {
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return weekdays[weekday - 1];
   }
 
   Widget _arrowContainer(IconData icon) {
@@ -426,17 +502,19 @@ class _CalendarPageState extends State<CalendarPage> {
         color: const Color(0xffF9F7F2),
         borderRadius: BorderRadius.circular(12.r),
       ),
-      child: Icon(icon, color: Colors.black),
+      child: Icon(icon, color: Colors.black, size: 20.sp),
     );
   }
 
   Widget _legend() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _legendItem(primaryTextColor, "Current Date"),
-        _legendItem(const Color(0xffE9C984), "Booked"),
-        _legendItem(Colors.grey.shade300, "Unavailable"),
+        _legendItem(primaryTextColor.withOpacity(0.7), "Current Date"),
+        SizedBox(width: 20.w),
+        _legendItem(const Color(0xffE9C984), "Selected Date"),
+        SizedBox(width: 20.w),
+        _legendItem(Colors.redAccent, "Booked"),
       ],
     );
   }
@@ -444,9 +522,9 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget _legendItem(Color color, String label) {
     return Row(
       children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(width: 12.w, height: 12.h, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         SizedBox(width: 6.w),
-        Text(label, style: TextStyle(fontSize: 12.sp)),
+        Text(label, style: TextStyle(fontSize: 12.sp, color: Colors.black87)),
       ],
     );
   }
@@ -454,63 +532,99 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget _appointmentCard(Map<String, dynamic> item) {
     final bool isCompleted = item['status'] == "Complete";
     return GestureDetector(
-      onTap: () {
-        Get.toNamed('/appointmentRequestPage');
-      },
+  /*    onTap: () {
+        if (item['booking_id'] != null) {
+          // Navigate to appointment request page with booking data
+          Get.toNamed('/appointmentRequestPage', arguments: {
+            'booking_id': item['booking_id'],
+            'client_name': item['name'],
+            'client_image': item['image'],
+            'service': item['service'],
+            'status': item['status'],
+            'time': item['time'],
+            'location': item['location'],
+            'is_booking': true, // Flag to indicate this is a booking, not a request
+          });
+          AppLogger.debug('Navigating to appointment details for booking_id: ${item['booking_id']}');
+        } else {
+          CustomSnackBar.show(context, 'Unable to open booking details. Missing booking ID.',
+              type: ToastificationType.error);
+          AppLogger.error('No booking_id found in item: $item');
+        }
+      },*/
       child: Container(
-        margin: EdgeInsets.only(bottom: 10.h),
+        margin: EdgeInsets.only(bottom: 12.h),
         padding: EdgeInsets.all(12.r),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14.r),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5.r)],
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 3.r, offset: Offset(0, 1))],
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
               backgroundImage: NetworkImage(item['image']),
               radius: 25.r,
               onBackgroundImageError: (_, __) => const AssetImage('assets/images/profilepic.png'),
             ),
-            SizedBox(width: 10.w),
+            SizedBox(width: 12.w),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Text(item['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
-                      const Spacer(),
+                      Expanded(
+                        child: Text(
+                          item['name'],
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: Colors.black87),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
                         decoration: BoxDecoration(
                           color: isCompleted ? const Color(0xFF28B446) : secounderyBorderColor,
                           borderRadius: BorderRadius.circular(12.r),
                         ),
                         child: Text(
                           item['status'],
-                          style: TextStyle(color: Colors.white, fontSize: 10.sp),
+                          style: TextStyle(color: Colors.white, fontSize: 10.sp, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
                   ),
-                  Text(item['location'], style: TextStyle(fontSize: 12.sp, color: Colors.black45)),
+                  SizedBox(height: 4.h),
+                  Text(
+                    item['location'],
+                    style: TextStyle(fontSize: 12.sp, color: Colors.black54),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 4.h),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Service: ${item['service']}", style: TextStyle(fontSize: 12.sp, color: primaryTextColor)),
+                      Text(
+                        "Service: ${item['service']}",
+                        style: TextStyle(fontSize: 12.sp, color: primaryTextColor, fontWeight: FontWeight.w500),
+                      ),
                       Row(
                         children: [
-                          Icon(Icons.access_time, size: 12.sp, color: Colors.grey),
-                          SizedBox(width: 3.w),
-                          Text(item['time'], style: TextStyle(fontSize: 12.sp)),
+                          Icon(Icons.access_time, size: 14.sp, color: Colors.grey.shade600),
+                          SizedBox(width: 4.w),
+                          Text(
+                            item['time'],
+                            style: TextStyle(fontSize: 12.sp, color: Colors.black87),
+                          ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -518,7 +632,7 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _appointmentRequestCard({
-    required int index, // Add index parameter
+    required int index,
     required String name,
     required String service,
     required String day,
@@ -527,19 +641,35 @@ class _CalendarPageState extends State<CalendarPage> {
     required String time,
     bool isFemale = false,
   }) {
-    final request = _appointmentRequests[index]; // Use the passed index
+    final request = _appointmentRequests[index];
     return GestureDetector(
-    onTap: () {
-        Get.toNamed('/appointmentRequestPage', arguments: {
-          'booking_id': request['Booking_id'], // Pass booking_id
-          'client_name': request['client_name'] ?? 'Unknown',
-          'client_image': request['client_image'],
-          'client_gender': request['client_gender'] ?? 'male',
-        });
-        AppLogger.debug('Navigating to appointmentRequestPage with booking_id: ${request['id']}');
-      },
+     /* onTap: () {
+        // Debug log to see what data we have
+        AppLogger.debug('Request data: $request');
+
+        // Check if booking_id exists in the request
+        final bookingId = request['booking_id']?.toString() ??
+            request['Booking_id']?.toString() ??
+            request['id']?.toString();
+
+        if (bookingId != null && bookingId.isNotEmpty) {
+          Get.toNamed('/appointmentRequestPage', arguments: {
+            'booking_id': bookingId,
+            'client_name': request['client_name'] ?? 'Unknown',
+            'client_image': request['client_image'],
+            'client_gender': request['client_gender'] ?? 'male',
+            'status': request['status'] ?? 'Pending',
+
+          });
+          AppLogger.debug('Navigating to appointmentRequestPage with booking_id: $bookingId');
+        } else {
+          AppLogger.error('No valid booking ID found in request: $request');
+          CustomSnackBar.show(context, 'Unable to open request details. Missing booking ID.',
+              type: ToastificationType.error);
+        }
+      },*/
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 12.0),
+        padding: EdgeInsets.only(bottom: 12.h),
         child: Row(
           children: [
             Container(
@@ -577,7 +707,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     bottomRight: Radius.circular(12.r),
                   ),
                   boxShadow: const [
-                    BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(2, 2)),
+                    BoxShadow(color: Colors.black12, blurRadius: 3, offset: Offset(2, 2)),
                   ],
                 ),
                 child: Column(
@@ -588,7 +718,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       children: [
                         Text(
                           service,
-                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                         ),
                         Row(
                           children: [
@@ -607,15 +737,14 @@ class _CalendarPageState extends State<CalendarPage> {
                           children: [
                             SizedBox(
                               width: 0.2.sw,
-                              height: 0.02.sh,
                               child: Text(
-                                overflow: TextOverflow.ellipsis,
                                 name,
                                 style: TextStyle(
                                   fontSize: 13.sp,
                                   color: Colors.black87,
                                   fontWeight: FontWeight.w500,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             SizedBox(width: 4.w),
@@ -626,7 +755,6 @@ class _CalendarPageState extends State<CalendarPage> {
                             ),
                           ],
                         ),
-
                         Row(
                           children: [
                             _statusButton(
@@ -650,7 +778,6 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
     );
   }
-
   Widget _statusButton(String label, Color color, Color textcolor, Color borderColor) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 3.h),

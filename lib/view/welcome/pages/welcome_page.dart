@@ -90,7 +90,7 @@ class WelcomePage extends StatelessWidget {
                           ),
                           SizedBox(height: 0.03.sh),
                           ThaiMassageButton(
-                            text: 'Login as $userTypeText',
+                            text: 'Login',
                             isPrimary: true,
                             onPressed: () {
                               Get.toNamed('/logIn',
@@ -99,7 +99,7 @@ class WelcomePage extends StatelessWidget {
                           ),
                           SizedBox(height: 0.02.sh),
                           ThaiMassageButton(
-                            text: 'Sign up as $userTypeText',
+                            text: 'Sign up',
                             isPrimary: false,
                             onPressed: () {
                               Get.toNamed('/signUp',

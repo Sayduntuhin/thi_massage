@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../themes/colors.dart';
 
 class ThaiMassageButton extends StatelessWidget {
@@ -14,6 +14,7 @@ class ThaiMassageButton extends StatelessWidget {
   final Color? backgroundColor;
   final Color? textColor;
   final Color? borderColor;
+  final bool isLoading; // New property for loading state
 
   const ThaiMassageButton({
     super.key,
@@ -27,6 +28,7 @@ class ThaiMassageButton extends StatelessWidget {
     this.backgroundColor,
     this.textColor,
     this.borderColor,
+    this.isLoading = false, // Default to false
   });
 
   @override
@@ -40,9 +42,9 @@ class ThaiMassageButton extends StatelessWidget {
       height: height.h,
       child: isPrimary
           ? ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? () {} : onPressed, // Disable button when loading
         style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor ?? defaultPrimaryColor,
+          backgroundColor: backgroundColor ?? (isLoading ? Colors.grey[400] : defaultPrimaryColor),
           foregroundColor: textColor ?? defaultTextColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius.r),
@@ -53,20 +55,25 @@ class ThaiMassageButton extends StatelessWidget {
           ),
           elevation: 0,
           minimumSize: Size(width ?? double.infinity, height.h),
-          alignment: Alignment.center, // Ensures text stays centered
+          alignment: Alignment.center,
         ),
-        child: Text(
+        child: isLoading
+            ? LoadingAnimationWidget.hexagonDots(
+          color: textColor ?? Colors.white,
+          size: 24.sp, // Adjusted for button size
+        )
+            : Text(
           text,
           style: TextStyle(
             fontSize: fontsize.sp,
             fontWeight: FontWeight.w500,
             fontFamily: "Urbanist",
+            color: textColor ?? defaultTextColor, // Ensure text color consistency
           ),
         ),
       )
-
           : OutlinedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? () {} : onPressed, // Disable button when loading
         style: OutlinedButton.styleFrom(
           side: BorderSide(
             color: borderColor ?? defaultBorderColor,
@@ -79,16 +86,21 @@ class ThaiMassageButton extends StatelessWidget {
           minimumSize: Size(width ?? double.infinity, height.h),
           alignment: Alignment.center,
         ),
-        child: Text(
+        child: isLoading
+            ? LoadingAnimationWidget.hexagonDots(
+          color: buttonTextColor,
+          size: 24.sp,
+        )
+            : Text(
           text,
           style: TextStyle(
             fontSize: fontsize.sp,
             fontWeight: FontWeight.w400,
             color: buttonTextColor,
+            fontFamily: "Urbanist",
           ),
         ),
-      )
-
+      ),
     );
   }
 }
